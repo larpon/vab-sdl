@@ -54,6 +54,8 @@ mut:
 struct CompileOptions {
 	verbosity int // level of verbosity
 	parallel  bool = true
+	cache     bool = true
+	cache_key string
 	// env
 	input    string
 	work_dir string // temporary work directory
