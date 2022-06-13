@@ -653,7 +653,7 @@ fn compile_v_code(opt CompileOptions) ! {
 		cache_key: compile_cache_key
 		parallel: opt.parallel
 		is_prod: opt.is_prod
-		no_printf_hijack: true
+		no_printf_hijack: false
 		// v_flags: opt.v_flags
 		c_flags: c_flags
 		archs: opt.archs.filter(it.trim(' ') != '')
@@ -989,6 +989,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	v_cmd << [
 		'-gc none',
 		'-cc clang',
+		'-cmain SDL_main',
 		'-dump-modules "$v_dump_modules_file"',
 		'-dump-c-flags "$v_cflags_file"',
 		'-os android',
@@ -1016,6 +1017,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	v_cmd << opt.v_flags
 	v_cmd << [
 		'-gc none',
+		'-cmain SDL_main',
 		'-os android',
 		//'-apk',
 		'-o "$v_output_file"',
@@ -1063,6 +1065,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		panic('$err_sig: empty module dump file "$v_dump_modules_file".')
 	}
 
+	/*
 	// Poor man's cache check
 	mut hash := ''
 	hash_file := os.join_path(opt.work_dir, 'v_android.hash')
@@ -1095,6 +1098,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		hash_fh.write(hash.bytes()) or { panic('$err_sig: failed writing to "$hash_file". $err') }
 		hash_fh.close()
 	}
+	*/
 
 	// Remove any previous builds
 	if os.is_dir(build_dir) {
@@ -1183,7 +1187,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	defines << ['-DANDROID', '-D__ANDROID__', '-DANDROIDVERSION=$opt.api_level']
 
 	// TODO if full_screen
-	defines << '-DANDROID_FULLSCREEN'
+	// defines << '-DANDROID_FULLSCREEN'
 
 	// Include NDK headers
 	// NOTE "$ndk_root/sysroot/usr/include" was deprecated since NDK r19
@@ -1195,6 +1199,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 	is_debug_build := '-cg' in opt.v_flags || '-g' in opt.v_flags
 
+	/*
 	// Boehm-Demers-Weiser Garbage Collector (bdwgc / libgc)
 	mut uses_gc := true // V default
 	for v_flag in opt.v_flags {
@@ -1221,6 +1226,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		defines << '-D_REENTRANT'
 		defines << '-DUSE_MMAP' // Will otherwise crash with a message with a path to the lib in GC_unix_mmap_get_mem+528
 	}
+	*/
 
 	// stb_image via `stbi` module
 	if 'stbi' in imported_modules {
@@ -1251,10 +1257,10 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 	ldflags << ['-shared'] // <- Android loads native code via a library in NativeActivity
 
-	mut cflags_arm64 := ['-m64']
-	mut cflags_arm32 := ['-mfloat-abi=softfp', '-m32']
-	mut cflags_x86 := ['-march=i686', '-mssse3', '-mfpmath=sse', '-m32']
-	mut cflags_x86_64 := ['-march=x86-64', '-msse4.2', '-mpopcnt', '-m64']
+	mut cflags_arm64 := []string{}//['-m64']
+	mut cflags_arm32 := []string{}//['-mfloat-abi=softfp', '-m32']
+	mut cflags_x86 := []string{}//['-march=i686', '-mssse3', '-mfpmath=sse', '-m32']
+	mut cflags_x86_64 := []string{}//['-march=x86-64', '-msse4.2', '-mpopcnt', '-m64']
 
 	mut arch_cc := map[string]string{}
 	mut arch_libs := map[string]string{}
@@ -1298,38 +1304,12 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 
 		// Compile .o
-
-		/*
-		mut args := []string{}
-		args << '-MMD -MP -MF /tmp/sdl_main.o.d'
-		//args << arch_cflags[arch]
-		args << '-fdata-sections -ffunction-sections -fstack-protector-strong -funwind-tables -no-canonical-prefixes'
-		args << '--sysroot '+ndk_sysroot
-		args << '-g -Wno-invalid-command-line-argument -Wno-unused-command-line-argument -D_FORTIFY_SOURCE=2 -fpic -O0 -UNDEBUG -fno-limit-debug-info'
-		//-I/home/lmp/Environments/Android/android-sdk-linux/ndk/21.4.7075529/sources/android/cpufeatures
-		args << '-v -Wno-incompatible-pointer-types-discards-qualifiers -Wno-literal-conversion -Wno-constant-conversion -Wno-pointer-sign -Wno-deprecated-declarations -Wno-int-to-pointer-cast -Wno-unused-value -DANDROID -Wformat -Werror=format-security'
-		//-c  /home/lmp/Downloads/SDL2-2.0.20/build/io.lmp.v/app/jni/src/sdl_main.c
-		// -o /home/lmp/Downloads/SDL2-2.0.20/build/io.lmp.v/app/build/intermediates/cxx/Debug/3j236t3u/obj/local/arm64-v8a/objs-debug/main/sdl_main.o
-
-		build_cmd := [
-			arch_cc[arch],
-			arch_cflags[arch].join(' '),
-			args.join(' '),
-			sources.join(' '),
-			'-o "$arch_lib_dir/lib${opt.lib_name}.so"',
-
-
-
-		*/
-
-
 		build_cmd := [
 			arch_cc[arch], cflags.join(' '), includes.join(' '),
 			defines.join(' '), sources.join(' '), arch_cflags[arch].join(' '),
-			'-o "$arch_lib_dir/lib${opt.lib_name}.o"',
-			ldflags.join(' ')
+			'-c "$v_output_file"',
+			'-o "$arch_lib_dir/sdl_${opt.lib_name}.o"',
 		]
-		//, v_output_file, '-L"' + arch_libs[arch] + '"', ldflags.join(' ')]
 
 		jobs << ShellJob{
 			cmd: build_cmd
@@ -1372,17 +1352,9 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		//	panic('$err_sig: failed making directory "$arch_lib_dir". $err')
 		//}
 
-		/*
-		 clang++ -Wl,-soname,libmain.so -shared sdl_main.o
-		 -lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a
-		 libSDL2.so
-		 -target aarch64-none-linux-android21 -no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--no-undefined -Wl,--fatal-warnings -lGLESv1_CM -lGLESv2 -llog -ldl -lc -lm -o libmain.so
-
-		 */
-
 		mut args := []string{}
 		args << '-Wl,-soname,libmain.so -shared '
-		args << "$arch_lib_dir/lib${opt.lib_name}.o"
+		args << "$arch_lib_dir/sdl_${opt.lib_name}.o"
 		args << '-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a'
 		args << libsdl2_so_file
 		args << arch_cflags[arch]
@@ -1394,7 +1366,6 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 			args.join(' '),
 			'-o "$arch_lib_dir/lib${opt.lib_name}.so"'
 		]
-		//, v_output_file, '-L"' + arch_libs[arch] + '"', ldflags.join(' ')]
 
 		jobs << ShellJob{
 			cmd: build_cmd
