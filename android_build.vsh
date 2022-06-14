@@ -192,7 +192,7 @@ fn compile_sdl(opt CompileOptions) ! {
 
 	// Remove any previous builds
 	if os.is_dir(build_dir) {
-		os.rmdir_all(build_dir) or {}
+		os.rmdir_all(build_dir) or { return error('$err_sig: failed removing previous build directory "$build_dir". $err') }
 	}
 	os.mkdir_all(build_dir) or {
 		return error('$err_sig: failed making directory "$build_dir". $err')
@@ -268,7 +268,7 @@ fn compile_sdl(opt CompileOptions) ! {
 		'-Wunreachable-code-return', '-Wshift-sign-overflow', '-Wstrict-prototypes',
 		'-Wkeyword-macro']
 
-	// Unfixed NDK(?)
+	// TODO Unfixed NDK/Gradle (?)
 	cflags << ['-Wno-invalid-command-line-argument', '-Wno-unused-command-line-argument']
 
 	// SDL/JNI specifics that aren't fixed yet
@@ -290,7 +290,10 @@ fn compile_sdl(opt CompileOptions) ! {
 	mut arch_cc_cpp := map[string]string{}
 	mut arch_ar := map[string]string{}
 	// mut arch_libs := map[string]string{}
+
+	mut arch_cflags := map[string][]string{}
 	for arch in archs {
+		// TODO introduce method to get just the `clang` or `clang++` base wrapper
 		c_compiler := ndk.compiler(.c, opt.ndk_version, arch, opt.api_level) or {
 			return error('$err_sig: failed getting NDK compiler. $err')
 		}
@@ -305,12 +308,8 @@ fn compile_sdl(opt CompileOptions) ! {
 			return error('$err_sig: failed getting ar tool. $err')
 		}
 		arch_ar[arch] = ar_tool
-	}
 
-	mut arch_cflags := map[string][]string{}
-
-	// Architechture dependent flags
-	for arch in archs {
+		// Architechture dependent flags
 		// TODO min_sdk_version SDL builds with 16 as lowest for the 32-bit archs?!
 		arch_cflags[arch] << [
 			'-target ' + compiler_target_quadruple(arch) + opt.min_sdk_version.str(),
@@ -405,7 +404,7 @@ fn compile_sdl(opt CompileOptions) ! {
 
 		// TODO -showcc ??
 		util.verbosity_print_cmd(cpufeatures_build_cmd, opt.verbosity)
-		cpufeatures_comp_res := util.run_or_exit(cpufeatures_build_cmd)
+		cpufeatures_comp_res := util.run_or_error(cpufeatures_build_cmd) !
 		if opt.verbosity > 2 {
 			eprintln(cpufeatures_comp_res)
 		}
@@ -424,7 +423,7 @@ fn compile_sdl(opt CompileOptions) ! {
 
 		// TODO -showcc ??
 		util.verbosity_print_cmd(cpufeatures_build_static_cmd, opt.verbosity)
-		cpufeatures_a_res := util.run_or_exit(cpufeatures_build_static_cmd)
+		cpufeatures_a_res := util.run_or_error(cpufeatures_build_static_cmd)!
 		if opt.verbosity > 2 {
 			eprintln(cpufeatures_a_res)
 		}
@@ -637,7 +636,7 @@ fn compile_v_code(opt CompileOptions) ! {
 	if keystore.path == '' {
 		keystore.path = os.join_path(opt.work_dir, 'debug.keystore') // TODO
 	}
-	keystore = android.resolve_keystore(keystore, opt.verbosity)
+	keystore = android.resolve_keystore(keystore, opt.verbosity) !
 
 	mut c_flags := opt.c_flags
 	c_flags << '-I"'+os.join_path(opt.sdl_config.root,'include')+'"'
@@ -662,8 +661,9 @@ fn compile_v_code(opt CompileOptions) ! {
 		ndk_version: opt.ndk_version
 		lib_name: 'main' //opt.lib_name
 		api_level: opt.api_level
+		min_sdk_version: opt.min_sdk_version
 	}
-	if !vab_compile_clone(comp_opt) {
+	vab_compile_clone(comp_opt) or {
 		eprintln('$exe_name compiling didn\'t succeed')
 		exit(1)
 	}
@@ -675,13 +675,14 @@ fn compile_v_code(opt CompileOptions) ! {
 		api_level: opt.api_level
 		min_sdk_version: opt.min_sdk_version
 		gles_version: 2 //opt.gles_version
-		build_tools: '27.0.3' //'24.0.3' // '29.0.3'//opt.build_tools
+		build_tools: '27.0.3' // TODO: try using aapt2 from the SDK (not the aab required one) '24.0.3' // '29.0.3'//opt.build_tools
 		//app_name: opt.app_name
 		lib_name: 'main' //opt.lib_name
-		//activity_name: 'VSDLActivity'
-		//package_id: 'io.v.android.ex'
-		activity_name: 'SDLActivity' // activity_name
-		package_id: 'org.libsdl.app'//'io.v.android.ex' //package_id
+		activity_name: 'VSDLActivity'
+		package_id: 'io.v.android.ex'
+		//activity_name: 'SDLActivity' // activity_name
+		//package_id: 'org.libsdl.app'//'io.v.android.ex' //package_id
+		//format: android.PackageFormat.aab //format
 		format: android.PackageFormat.apk //format
 		//icon: opt.icon
 		version_code: 0 //opt.version_code
@@ -691,16 +692,15 @@ fn compile_v_code(opt CompileOptions) ! {
 		libs_extra: [os.join_path(opt.work_dir, 'sdl_build','lib')] //opt.libs_extra
 		output_file: '/tmp/t.apk' //opt.output
 		keystore: keystore
-		//base_files: os.join_path('$os.home_dir()/.vmodules/vab', 'platforms', 'android')
-		base_files: '$os.home_dir()/Projects/vdev/v_sdl4android/tmp/v_sdl_java'
-		//overrides_path: '$os.home_dir()/Projects/vdev/v_sdl4android/tmp/v_sdl_java' //opt.package_overrides_path
+		base_files: os.join_path('$os.home_dir()/.vmodules/vab', 'platforms', 'android')
+		//base_files: '$os.home_dir()/Projects/vdev/v_sdl4android/tmp/v_sdl_java'
+		overrides_path: '$os.home_dir()/Projects/vdev/v_sdl4android/tmp/v_sdl_java' //opt.package_overrides_path
 	}
-	if !android.package(pck_opt) {
-		eprintln("Packaging didn't succeed")
+	android.package(pck_opt) or {
+		eprintln("Packaging didn't succeed:\n$err")
 		exit(1)
 	}
 }
-
 
 fn args_to_options(arguments []string, defaults Options) ?(Options, &flag.FlagParser) {
 	mut args := arguments.clone()
@@ -957,10 +957,10 @@ fn compiler_target_quadruple(arch string) string {
 
 
 // TODO make generic enough to put it in vab??!
-pub fn vab_compile_clone(opt android.CompileOptions) bool {
+pub fn vab_compile_clone(opt android.CompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 	os.mkdir_all(opt.work_dir) or {
-		panic('$err_sig: failed making directory "$opt.work_dir". $err')
+		return error('$err_sig: failed making directory "$opt.work_dir". $err')
 	}
 	build_dir := os.join_path(opt.work_dir, 'build')
 	mut jobs := []ShellJob{}
@@ -987,12 +987,12 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 	v_cmd << opt.v_flags
 	v_cmd << [
+		'-os android',
 		'-gc none',
 		'-cc clang',
 		'-cmain SDL_main',
 		'-dump-modules "$v_dump_modules_file"',
 		'-dump-c-flags "$v_cflags_file"',
-		'-os android',
 		//'-apk',
 	]
 	v_cmd << opt.input
@@ -1016,6 +1016,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	}
 	v_cmd << opt.v_flags
 	v_cmd << [
+		'-os android',
 		'-gc none',
 		'-cmain SDL_main',
 		'-os android',
@@ -1055,14 +1056,14 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 	// Parse imported modules from dump
 	mut imported_modules := os.read_file(v_dump_modules_file) or {
-		panic('$err_sig: failed reading module dump file "$v_dump_modules_file". $err')
+		return error('$err_sig: failed reading module dump file "$v_dump_modules_file". $err')
 	}.split('\n').filter(it != '')
 	imported_modules.sort()
 	if opt.verbosity > 2 {
-		println('Imported modules:\n' + imported_modules.join('\n'))
+		println('Imported modules: $imported_modules')
 	}
 	if imported_modules.len == 0 {
-		panic('$err_sig: empty module dump file "$v_dump_modules_file".')
+		return error('$err_sig: empty module dump file "$v_dump_modules_file".')
 	}
 
 	/*
@@ -1071,7 +1072,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	hash_file := os.join_path(opt.work_dir, 'v_android.hash')
 	if opt.cache && os.exists(build_dir) && os.exists(v_output_file) {
 		mut bytes := os.read_bytes(v_output_file) or {
-			panic('$err_sig: failed reading "$v_output_file". $err')
+			return error('$err_sig: failed reading "$v_output_file". $err')
 		}
 		bytes << '$opt.str()-$opt.cache_key'.bytes()
 		hash = md5.sum(bytes).hex()
@@ -1093,9 +1094,9 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		}
 		os.rm(hash_file) or {}
 		mut hash_fh := os.open_file(hash_file, 'w+', 0o700) or {
-			panic('$err_sig: failed opening "$hash_file". $err')
+			return error('$err_sig: failed opening "$hash_file". $err')
 		}
-		hash_fh.write(hash.bytes()) or { panic('$err_sig: failed writing to "$hash_file". $err') }
+		hash_fh.write(hash.bytes()) or { return error('$err_sig: failed writing to "$hash_file". $err') }
 		hash_fh.close()
 	}
 	*/
@@ -1104,7 +1105,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	if os.is_dir(build_dir) {
 		os.rmdir_all(build_dir) or {}
 	}
-	os.mkdir(build_dir) or { panic(err) }
+	os.mkdir(build_dir) or { return error('$err_sig: $err') }
 
 	v_home := vxt.home()
 
@@ -1132,7 +1133,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 	// Read in the dumped cflags
 	vcflags := os.read_file(v_cflags_file) or {
-		panic('$err_sig: failed reading C flags to "$v_cflags_file". $err')
+		return error('$err_sig: failed reading C flags to "$v_cflags_file". $err')
 	}
 	for line in vcflags.split('\n') {
 		if line.contains('.tmp.c') || line.ends_with('.o"') {
@@ -1192,15 +1193,15 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	// Include NDK headers
 	// NOTE "$ndk_root/sysroot/usr/include" was deprecated since NDK r19
 	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
-		panic('$err_sig: getting NDK sysroot path. $err')
+		return error('$err_sig: getting NDK sysroot path. $err')
 	}
 	includes << ['-I"' + os.join_path(ndk_sysroot, 'usr', 'include') + '"',
 		'-I"' + os.join_path(ndk_sysroot, 'usr', 'include', 'android') + '"']
 
 	is_debug_build := '-cg' in opt.v_flags || '-g' in opt.v_flags
 
-	/*
 	// Boehm-Demers-Weiser Garbage Collector (bdwgc / libgc)
+	/*
 	mut uses_gc := true // V default
 	for v_flag in opt.v_flags {
 		if v_flag.starts_with('-gc') {
@@ -1226,7 +1227,6 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		defines << '-D_REENTRANT'
 		defines << '-DUSE_MMAP' // Will otherwise crash with a message with a path to the lib in GC_unix_mmap_get_mem+528
 	}
-	*/
 
 	// stb_image via `stbi` module
 	if 'stbi' in imported_modules {
@@ -1237,7 +1237,7 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		sources << [
 			'"' + os.join_path(v_home, 'thirdparty', 'stb_image', 'stbi.c') + '"',
 		]
-	}
+	}*/
 
 	// cJson via `json` module
 	if 'json' in imported_modules {
@@ -1266,12 +1266,12 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 	mut arch_libs := map[string]string{}
 	for arch in archs {
 		compiler := ndk.compiler(.c, opt.ndk_version, arch, opt.api_level) or {
-			panic('$err_sig: failed getting NDK compiler. $err')
+			return error('$err_sig: failed getting NDK compiler. $err')
 		}
 		arch_cc[arch] = compiler
 
 		arch_lib := ndk.libs_path(opt.ndk_version, arch, opt.api_level) or {
-			panic('$err_sig: failed getting NDK libs path. $err')
+			return error('$err_sig: failed getting NDK libs path. $err')
 		}
 		arch_libs[arch] = arch_lib
 	}
@@ -1288,20 +1288,22 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 
 	for arch in archs {
 		arch_cflags[arch] << [
-			'-target ' + compiler_target_quadruple(arch) + '21' // TODO opt.min_sdk_version.str(),
+			'-target ' + compiler_target_quadruple(arch) + opt.min_sdk_version.str()
 		]
 		if arch == 'armeabi-v7a' {
 			arch_cflags[arch] << ['-march=armv7-a']
 		}
 	}
 
+	// TODO compile one .c source at the time
+	// sources << '"'+v_output_file+'"'
+
 	// Cross compile .so lib files
 	for arch in archs {
 		arch_lib_dir := os.join_path(build_dir, 'lib', arch)
 		os.mkdir_all(arch_lib_dir) or {
-			panic('$err_sig: failed making directory "$arch_lib_dir". $err')
+			return error('$err_sig: failed making directory "$arch_lib_dir". $err')
 		}
-
 
 		// Compile .o
 		build_cmd := [
@@ -1393,24 +1395,17 @@ pub fn vab_compile_clone(opt android.CompileOptions) bool {
 		}
 	}
 
-
-
-
-
-
-
 	if 'armeabi-v7a' in archs {
 		// TODO fix DT_NAME crash instead of including a copy of the armeabi-v7a lib
 		armeabi_lib_dir := os.join_path(build_dir, 'lib', 'armeabi')
 		os.mkdir_all(armeabi_lib_dir) or {
-			panic('$err_sig: failed making directory "$armeabi_lib_dir". $err')
+			return error('$err_sig: failed making directory "$armeabi_lib_dir". $err')
 		}
 
 		armeabi_lib_src := os.join_path(build_dir, 'lib', 'armeabi-v7a', 'lib${opt.lib_name}.so')
 		armeabi_lib_dst := os.join_path(armeabi_lib_dir, 'lib${opt.lib_name}.so')
 		os.cp(armeabi_lib_src, armeabi_lib_dst) or {
-			panic('$err_sig: failed copying "$armeabi_lib_src" to "$armeabi_lib_dst". $err')
+			return error('$err_sig: failed copying "$armeabi_lib_src" to "$armeabi_lib_dst". $err')
 		}
 	}
-	return true
 }
