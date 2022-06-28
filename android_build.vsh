@@ -71,6 +71,22 @@ struct CompileOptions {
 	sdl_config SDLConfig
 }
 
+// archs returns an array of target architectures.
+pub fn (opt CompileOptions) archs() ![]string {
+	mut archs := []string{}
+	if opt.archs.len > 0 {
+		for arch in opt.archs.map(it.trim_space()) {
+			if arch in android.default_archs {
+				archs << arch
+			} else {
+				return error(@MOD + '.' + @FN +
+					': Architechture "$arch" not one of $android.default_archs')
+			}
+		}
+	}
+	return archs
+}
+
 struct SDLConfig {
 	root string
 }
@@ -203,11 +219,6 @@ fn compile_sdl(opt CompileOptions) ! {
 	mut cflags := opt.c_flags
 	// For all C++ compilers
 	mut cppflags := ['-fno-exceptions', '-fno-rtti']
-	// For individual architectures / compilers
-	mut cflags_arm32 := []string{}
-	mut cflags_arm64 := []string{}
-	mut cflags_x86 := []string{}
-	mut cflags_x86_64 := []string{}
 
 	// For all compilers
 	mut includes := []string{}
@@ -225,16 +236,7 @@ fn compile_sdl(opt CompileOptions) ! {
 	}
 
 	// Resolve what architectures to compile for
-	mut archs := []string{}
-	if opt.archs.len > 0 {
-		for arch in opt.archs {
-			if arch in android.default_archs {
-				archs << arch.trim_space()
-			} else {
-				eprintln('Architechture "$arch" not one of $android.default_archs')
-			}
-		}
-	}
+	mut archs := opt.archs()!
 	// Compile sources for all Android archs if no valid archs found
 	if archs.len <= 0 {
 		archs = android.default_archs.clone()
@@ -312,18 +314,12 @@ fn compile_sdl(opt CompileOptions) ! {
 		// Architechture dependent flags
 		// TODO min_sdk_version SDL builds with 16 as lowest for the 32-bit archs?!
 		arch_cflags[arch] << [
-			'-target ' + compiler_target_quadruple(arch) + opt.min_sdk_version.str(),
+			'-target ' + ndk.compiler_triplet(arch) + opt.min_sdk_version.str(),
 		]
 		if arch == 'armeabi-v7a' {
 			arch_cflags[arch] << ['-march=armv7-a']
 		}
 	}
-
-	// TODO these are currently unused
-	arch_cflags['arm64-v8a'] << cflags_arm64
-	arch_cflags['armeabi-v7a'] << cflags_arm32
-	arch_cflags['x86'] << cflags_x86
-	arch_cflags['x86_64'] << cflags_x86_64
 
 	// TODO clean up this mess
 	mut cpufeatures_c_args := []string{}
@@ -633,8 +629,19 @@ fn compile_v_code(opt CompileOptions) ! {
 	mut keystore := android.Keystore{
 		path: ''
 	}
-	if keystore.path == '' {
-		keystore.path = os.join_path(opt.work_dir, 'debug.keystore') // TODO
+	if !os.is_file(keystore.path) {
+		if keystore.path != '' {
+			eprintln('Keystore "$keystore.path" is not a valid file')
+			eprintln('Notice: Signing with debug keystore')
+		}
+		keystore_dir := os.join_path(opt.work_dir, 'keystore')
+		if !os.is_dir(keystore_dir) {
+			os.mkdir_all(keystore_dir) or {
+				eprintln('Could make directory for debug keystore.\n$err')
+				exit(1)
+			}
+		}
+		keystore.path = os.join_path(keystore_dir, 'debug.keystore')
 	}
 	keystore = android.resolve_keystore(keystore, opt.verbosity) !
 
@@ -644,6 +651,8 @@ fn compile_v_code(opt CompileOptions) ! {
 	c_flags << '-D_FORTIFY_SOURCE=2'
 	c_flags << ['-Wno-pointer-to-int-cast', '-Wno-constant-conversion', '-Wno-literal-conversion','-Wno-deprecated-declarations']
 	//c_flags << '-mthumb'
+	// V specific
+	c_flags << ['-Wno-int-to-pointer-cast']
 
 	compile_cache_key := if os.is_dir(opt.input) /*|| input_ext == '.v'*/ { opt.input } else { '' }
 	comp_opt := android.CompileOptions{
@@ -653,7 +662,7 @@ fn compile_v_code(opt CompileOptions) ! {
 		parallel: opt.parallel
 		is_prod: opt.is_prod
 		no_printf_hijack: false
-		// v_flags: opt.v_flags
+		v_flags: ['-gc none']// opt.v_flags
 		c_flags: c_flags
 		archs: opt.archs.filter(it.trim(' ') != '')
 		work_dir: opt.work_dir
@@ -663,7 +672,7 @@ fn compile_v_code(opt CompileOptions) ! {
 		api_level: opt.api_level
 		min_sdk_version: opt.min_sdk_version
 	}
-	vab_compile_clone(comp_opt) or {
+	vab_compile(comp_opt) or {
 		eprintln('$exe_name compiling didn\'t succeed')
 		exit(1)
 	}
@@ -675,7 +684,7 @@ fn compile_v_code(opt CompileOptions) ! {
 		api_level: opt.api_level
 		min_sdk_version: opt.min_sdk_version
 		gles_version: 2 //opt.gles_version
-		build_tools: '27.0.3' // TODO: try using aapt2 from the SDK (not the aab required one) '24.0.3' // '29.0.3'//opt.build_tools
+		build_tools: sdk.default_build_tools_version
 		//app_name: opt.app_name
 		lib_name: 'main' //opt.lib_name
 		activity_name: 'VSDLActivity'
@@ -744,22 +753,25 @@ fn args_to_options(arguments []string, defaults Options) ?(Options, &flag.FlagPa
 }
 
 fn resolve_options(mut opt Options, exit_on_error bool) {
-	// Validate API level
+	// Validate SDK API level
 	mut api_level := sdk.default_api_level
+	if api_level == '' {
+		eprintln('No Android API levels could be detected in the SDK.')
+		eprintln('If the SDK is working and writable, new platforms can be installed with:')
+		eprintln('`$exe_name install "platforms;android-<API LEVEL>"`')
+		eprintln('You can set a custom SDK with the ANDROID_SDK_ROOT env variable')
+		if exit_on_error {
+			exit(1)
+		}
+	}
 	if opt.api_level != '' {
+		// Set user requested API level
 		if sdk.has_api(opt.api_level) {
 			api_level = opt.api_level
 		} else {
 			// TODO Warnings
-			eprintln('Android API level "$opt.api_level" is not available in SDK.')
-			eprintln('Falling back to default "$api_level"')
-		}
-	}
-	if api_level == '' {
-		eprintln('Android API level "$opt.api_level" is not available in SDK.')
-		eprintln('It can be installed with `$exe_name install "platforms;android-<API LEVEL>"`')
-		if exit_on_error {
-			exit(1)
+			eprintln('Notice: The requested Android API level "$opt.api_level" is not available in the SDK.')
+			eprintln('Notice: Falling back to default "$api_level"')
 		}
 	}
 	if api_level.i16() < sdk.min_supported_api_level.i16() {
@@ -774,29 +786,51 @@ fn resolve_options(mut opt Options, exit_on_error bool) {
 
 	// Validate NDK version
 	mut ndk_version := ndk.default_version()
-	if opt.ndk_version != '' {
-		if ndk.has_version(opt.ndk_version) {
-			ndk_version = opt.ndk_version
-		} else {
-			// TODO FIX Warnings and add install function
-			eprintln('Android NDK version $opt.ndk_version is not available.')
-			// eprintln('(It can be installed with `$exe_name install "ndk;${opt.build_tools}"`)')
-			eprintln('Falling back to default $ndk_version')
-		}
-	}
 	if ndk_version == '' {
-		eprintln('Android NDK version $opt.ndk_version is not available.')
-		// eprintln('It can be installed with `$exe_name install android-api-${opt.api_level}`')
+		eprintln('No Android NDK versions could be detected.')
+		eprintln('If the SDK is working and writable, new NDK versions can be installed with:')
+		eprintln('`$exe_name install "ndk;<NDK VERSION>"`')
+		eprintln('The minimum supported NDK version is "$ndk.min_supported_version"')
 		if exit_on_error {
 			exit(1)
 		}
 	}
+	if opt.ndk_version != '' {
+		// Set user requested NDK version
+		if ndk.has_version(opt.ndk_version) {
+			ndk_version = opt.ndk_version
+		} else {
+			// TODO FIX Warnings and add install function
+			eprintln('Android NDK version "$opt.ndk_version" could not be found.')
+			eprintln('If the SDK is working and writable, new NDK versions can be installed with:')
+			eprintln('`$exe_name install "ndk;<NDK VERSION>"`')
+			eprintln('The minimum supported NDK version is "$ndk.min_supported_version"')
+			eprintln('Falling back to default $ndk_version')
+		}
+	}
 
 	opt.ndk_version = ndk_version
+
+	// Resolve NDK vs. SDK available platforms
+	min_ndk_api_level := ndk.min_api_available(opt.ndk_version)
+	max_ndk_api_level := ndk.max_api_available(opt.ndk_version)
+	if opt.api_level.i16() > max_ndk_api_level.i16()
+		|| opt.api_level.i16() < min_ndk_api_level.i16() {
+		if opt.api_level.i16() > max_ndk_api_level.i16() {
+			eprintln('Notice: Falling back to API level "$max_ndk_api_level" (SDK API level $opt.api_level > highest NDK API level $max_ndk_api_level).')
+			opt.api_level = max_ndk_api_level
+		}
+		if opt.api_level.i16() < min_ndk_api_level.i16() {
+			if sdk.has_api(min_ndk_api_level) {
+				eprintln('Notice: Falling back to API level "$min_ndk_api_level" (SDK API level $opt.api_level < lowest NDK API level $max_ndk_api_level).')
+				opt.api_level = min_ndk_api_level
+			}
+		}
+	}
 }
 
 fn ab_work_dir() string {
-	return os.join_path(os.temp_dir(), 'v_sdl_android_build')
+	return os.join_path(os.temp_dir(), 'v_sdl_android')
 }
 
 fn ab_commit_hash() string {
@@ -837,7 +871,7 @@ fn sdl_environment(config SDLConfig) !SDLEnv {
 	err_sig := @MOD + '.' + @FN
 	root := os.real_path(config.root)
 
-	// Detect version - TODO fixme
+	// Detect version - TODO FIXME
 	version := os.file_name(config.root).all_after('SDL2-')
 
 	src := os.join_path(root, 'src')
@@ -945,424 +979,68 @@ fn sdl_environment(config SDLConfig) !SDLEnv {
 	}
 }
 
-fn compiler_target_quadruple(arch string) string {
-	mut eabi := ''
-	mut arch_is := ndk.arch_to_instruction_set(arch)
-	if arch == 'armeabi-v7a' {
-		eabi = 'eabi'
-		arch_is = 'armv7'
-	}
-	return arch_is + '-none-linux-android$eabi'
-}
-
-
-// TODO make generic enough to put it in vab??!
-pub fn vab_compile_clone(opt android.CompileOptions) ! {
+pub fn vab_compile(opt android.CompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
-	os.mkdir_all(opt.work_dir) or {
-		return error('$err_sig: failed making directory "$opt.work_dir". $err')
-	}
-	build_dir := os.join_path(opt.work_dir, 'build')
-	mut jobs := []ShellJob{}
 
-	if opt.verbosity > 0 {
-		println('Compiling V to C' + if opt.parallel { ' in parallel' } else { '' })
-		if opt.v_flags.len > 0 {
-			println('V flags: `$opt.v_flags`')
-		}
-	}
-	vexe := vxt.vexe()
-	v_output_file := os.join_path(opt.work_dir, 'v_android.c')
+	android.compile(opt) or {} // Building the .so will fail
 
-	// Dump modules and C flags to files
-	v_cflags_file := os.join_path(opt.work_dir, 'v.cflags')
-	os.rm(v_cflags_file) or {}
-	v_dump_modules_file := os.join_path(opt.work_dir, 'v.modules')
-	os.rm(v_dump_modules_file) or {}
+	build_dir := opt.build_directory()!
+	sdl_build_dir := os.join_path(opt.work_dir, 'sdl_build')
 
-	mut v_cmd := [vexe]
-	if !opt.cache {
-		v_cmd << '-nocache'
-	}
-
-	v_cmd << opt.v_flags
-	v_cmd << [
-		'-os android',
-		'-gc none',
-		'-cc clang',
-		'-cmain SDL_main',
-		'-dump-modules "$v_dump_modules_file"',
-		'-dump-c-flags "$v_cflags_file"',
-		//'-apk',
-	]
-	v_cmd << opt.input
-
-	// NOTE this command fails with a C compile error but the output we need is still
-	// present... Yes - not exactly pretty.
-	// VCROSS_COMPILER_NAME is needed (on at least Windows)
-	jobs << ShellJob{
-		env_vars: {
-			'VCROSS_COMPILER_NAME': ndk.compiler(.c, opt.ndk_version, 'arm64-v8a', opt.api_level) or {
-				''
-			}
-		}
-		cmd: v_cmd.clone()
-	}
-
-	// Compile to Android compatible C file
-	v_cmd = [vexe]
-	if !opt.cache {
-		v_cmd << '-nocache'
-	}
-	v_cmd << opt.v_flags
-	v_cmd << [
-		'-os android',
-		'-gc none',
-		'-cmain SDL_main',
-		'-os android',
-		//'-apk',
-		'-o "$v_output_file"',
-	]
-	v_cmd << opt.input
-	jobs << ShellJob{
-		cmd: v_cmd.clone()
-	}
-
-	if opt.parallel {
-		mut pp := pool.new_pool_processor(maxjobs: runtime.nr_cpus() - 1, callback: async_run)
-		pp.work_on_items(jobs)
-		for job_res in pp.get_results<ShellJobResult>() {
-			util.verbosity_print_cmd(job_res.job.cmd, opt.verbosity)
-			if '-cc clang' !in job_res.job.cmd {
-				util.exit_on_bad_result(job_res.result, '${job_res.job.cmd[0]} failed with return code $job_res.result.exit_code')
-				if opt.verbosity > 2 {
-					println(job_res.result.output)
-				}
-			}
-		}
-	} else {
-		for job in jobs {
-			util.verbosity_print_cmd(job.cmd, opt.verbosity)
-			job_res := sync_run(job)
-			if '-cc clang' !in job_res.job.cmd {
-				util.exit_on_bad_result(job_res.result, '${job.cmd[0]} failed with return code $job_res.result.exit_code')
-				if opt.verbosity > 2 {
-					println(job_res.result.output)
-				}
-			}
-		}
-	}
-	jobs.clear()
-
-	// Parse imported modules from dump
-	mut imported_modules := os.read_file(v_dump_modules_file) or {
-		return error('$err_sig: failed reading module dump file "$v_dump_modules_file". $err')
-	}.split('\n').filter(it != '')
-	imported_modules.sort()
-	if opt.verbosity > 2 {
-		println('Imported modules: $imported_modules')
-	}
-	if imported_modules.len == 0 {
-		return error('$err_sig: empty module dump file "$v_dump_modules_file".')
-	}
-
-	/*
-	// Poor man's cache check
-	mut hash := ''
-	hash_file := os.join_path(opt.work_dir, 'v_android.hash')
-	if opt.cache && os.exists(build_dir) && os.exists(v_output_file) {
-		mut bytes := os.read_bytes(v_output_file) or {
-			return error('$err_sig: failed reading "$v_output_file". $err')
-		}
-		bytes << '$opt.str()-$opt.cache_key'.bytes()
-		hash = md5.sum(bytes).hex()
-
-		if os.exists(hash_file) {
-			prev_hash := os.read_file(hash_file) or { '' }
-			if hash == prev_hash {
-				if opt.verbosity > 1 {
-					println('Skipping compile. Hashes match $hash')
-				}
-				return true
-			}
-		}
-	}
-
-	if hash != '' && os.exists(v_output_file) {
-		if opt.verbosity > 2 {
-			println('Writing new hash $hash')
-		}
-		os.rm(hash_file) or {}
-		mut hash_fh := os.open_file(hash_file, 'w+', 0o700) or {
-			return error('$err_sig: failed opening "$hash_file". $err')
-		}
-		hash_fh.write(hash.bytes()) or { return error('$err_sig: failed writing to "$hash_file". $err') }
-		hash_fh.close()
-	}
-	*/
-
-	// Remove any previous builds
-	if os.is_dir(build_dir) {
-		os.rmdir_all(build_dir) or {}
-	}
-	os.mkdir(build_dir) or { return error('$err_sig: $err') }
-
-	v_home := vxt.home()
-
-	mut archs := []string{}
-	if opt.archs.len > 0 {
-		for a in opt.archs {
-			if a in android.default_archs {
-				archs << a.trim_space()
-			} else {
-				eprintln('Architechture "$a" not one of $android.default_archs')
-			}
-		}
-	}
-	// Compile sources for all Android archs if no valid archs found
-	if archs.len <= 0 {
-		archs = android.default_archs.clone()
-	}
-
-	// For all compilers
-	mut cflags := opt.c_flags
-	mut includes := []string{}
-	mut defines := []string{}
-	mut ldflags := []string{}
-	mut sources := []string{}
-
-	// Read in the dumped cflags
-	vcflags := os.read_file(v_cflags_file) or {
-		return error('$err_sig: failed reading C flags to "$v_cflags_file". $err')
-	}
-	for line in vcflags.split('\n') {
-		if line.contains('.tmp.c') || line.ends_with('.o"') {
-			continue
-		}
-		if line.starts_with('-D') {
-			defines << line
-		}
-		if line.starts_with('-I') {
-			if line.contains('/usr/') {
-				continue
-			}
-			includes << line
-		}
-		if line.starts_with('-l') {
-			if line.contains('-lgc') {
-				continue
-			}
-			ldflags << line
-		}
-	}
-
-	// ... still a bit of a mess
-	if opt.is_prod {
-		cflags << ['-Os']
-	} else {
-		cflags << ['-O0']
-	}
-	cflags << ['-fPIC', '-fvisibility=hidden', '-ffunction-sections', '-fdata-sections',
-		'-ferror-limit=1']
-
-	cflags << ['-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
-		'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label',
-		'-Werror=implicit-function-declaration']
-
-	// TODO Here to make the compiler(s) shut up :/
-	cflags << ['-Wno-braced-scalar-init', '-Wno-incompatible-pointer-types',
-		'-Wno-implicitly-unsigned-literal', '-Wno-pointer-sign', '-Wno-enum-conversion',
-		'-Wno-int-conversion', '-Wno-int-to-pointer-cast', '-Wno-sign-compare', '-Wno-return-type',
-		'-Wno-extra-tokens', '-Wno-unused-value']
-
-	// NOTE This define allows V to redefine C's printf() - to let logging via println() etc. go
-	// through Android device's system log (that adb logcat reads).
-	if !opt.no_printf_hijack {
-		if opt.verbosity > 1 {
-			println('Define V_ANDROID_LOG_PRINT - (f)printf will be redefined...')
-		}
-		defines << '-DV_ANDROID_LOG_PRINT'
-	}
-
-	defines << '-DAPPNAME="$opt.lib_name"'
-	defines << ['-DANDROID', '-D__ANDROID__', '-DANDROIDVERSION=$opt.api_level']
-
-	// TODO if full_screen
-	// defines << '-DANDROID_FULLSCREEN'
-
-	// Include NDK headers
-	// NOTE "$ndk_root/sysroot/usr/include" was deprecated since NDK r19
-	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
-		return error('$err_sig: getting NDK sysroot path. $err')
-	}
-	includes << ['-I"' + os.join_path(ndk_sysroot, 'usr', 'include') + '"',
-		'-I"' + os.join_path(ndk_sysroot, 'usr', 'include', 'android') + '"']
-
-	is_debug_build := '-cg' in opt.v_flags || '-g' in opt.v_flags
-
-	// Boehm-Demers-Weiser Garbage Collector (bdwgc / libgc)
-	/*
-	mut uses_gc := true // V default
-	for v_flag in opt.v_flags {
-		if v_flag.starts_with('-gc') {
-			if v_flag.ends_with('none') {
-				uses_gc = false
-			}
-			if opt.verbosity > 1 {
-				println('Garbage collecting is $uses_gc via "$v_flag"')
-			}
-			break
-		}
-	}
-
-	if uses_gc {
-		includes << [
-			'-I"' + os.join_path(v_home, 'thirdparty', 'libgc', 'include') + '"',
-		]
-		sources << ['"' + os.join_path(v_home, 'thirdparty', 'libgc', 'gc.c') + '"']
-		if is_debug_build {
-			defines << '-DGC_ASSERTIONS'
-			defines << '-DGC_ANDROID_LOG'
-		}
-		defines << '-D_REENTRANT'
-		defines << '-DUSE_MMAP' // Will otherwise crash with a message with a path to the lib in GC_unix_mmap_get_mem+528
-	}
-
-	// stb_image via `stbi` module
-	if 'stbi' in imported_modules {
-		if opt.verbosity > 1 {
-			println('Including stb_image via stbi module')
-		}
-		// includes << ['-I"$v_home/thirdparty/stb_image"']
-		sources << [
-			'"' + os.join_path(v_home, 'thirdparty', 'stb_image', 'stbi.c') + '"',
-		]
-	}*/
-
-	// cJson via `json` module
-	if 'json' in imported_modules {
-		if opt.verbosity > 1 {
-			println('Including cJSON via json module')
-		}
-		includes << ['-I"' + os.join_path(v_home, 'thirdparty', 'cJSON') + '"']
-		sources << [
-			'"' + os.join_path(v_home, 'thirdparty', 'cJSON', 'cJSON.c') + '"',
-		]
-	}
-
-	// misc
-	ldflags << ['-llog', '-landroid', '-lm']
-
-	ldflags << ['-lGLESv1_CM','-lGLESv2','-ldl','-lc']
-
-	ldflags << ['-shared'] // <- Android loads native code via a library in NativeActivity
-
-	mut cflags_arm64 := []string{}//['-m64']
-	mut cflags_arm32 := []string{}//['-mfloat-abi=softfp', '-m32']
-	mut cflags_x86 := []string{}//['-march=i686', '-mssse3', '-mfpmath=sse', '-m32']
-	mut cflags_x86_64 := []string{}//['-march=x86-64', '-msse4.2', '-mpopcnt', '-m64']
+	archs := opt.archs()!
 
 	mut arch_cc := map[string]string{}
 	mut arch_libs := map[string]string{}
+
+	mut o_files := map[string][]string{}
 	for arch in archs {
 		compiler := ndk.compiler(.c, opt.ndk_version, arch, opt.api_level) or {
-			return error('$err_sig: failed getting NDK compiler. $err')
+			return error('$err_sig: failed getting NDK compiler.\n$err')
 		}
 		arch_cc[arch] = compiler
 
 		arch_lib := ndk.libs_path(opt.ndk_version, arch, opt.api_level) or {
-			return error('$err_sig: failed getting NDK libs path. $err')
+			return error('$err_sig: failed getting NDK libs path.\n$err')
 		}
 		arch_libs[arch] = arch_lib
-	}
 
-	mut arch_cflags := map[string][]string{}
-	arch_cflags['arm64-v8a'] = cflags_arm64
-	arch_cflags['armeabi-v7a'] = cflags_arm32
-	arch_cflags['x86'] = cflags_x86
-	arch_cflags['x86_64'] = cflags_x86_64
-
-	if opt.verbosity > 0 {
-		println('Compiling C to $archs' + if opt.parallel { ' in parallel' } else { '' })
-	}
-
-	for arch in archs {
-		arch_cflags[arch] << [
-			'-target ' + compiler_target_quadruple(arch) + opt.min_sdk_version.str()
-		]
-		if arch == 'armeabi-v7a' {
-			arch_cflags[arch] << ['-march=armv7-a']
-		}
-	}
-
-	// TODO compile one .c source at the time
-	// sources << '"'+v_output_file+'"'
-
-	// Cross compile .so lib files
-	for arch in archs {
-		arch_lib_dir := os.join_path(build_dir, 'lib', arch)
-		os.mkdir_all(arch_lib_dir) or {
-			return error('$err_sig: failed making directory "$arch_lib_dir". $err')
-		}
-
-		// Compile .o
-		build_cmd := [
-			arch_cc[arch], cflags.join(' '), includes.join(' '),
-			defines.join(' '), sources.join(' '), arch_cflags[arch].join(' '),
-			'-c "$v_output_file"',
-			'-o "$arch_lib_dir/sdl_${opt.lib_name}.o"',
-		]
-
-		jobs << ShellJob{
-			cmd: build_cmd
-		}
-	}
-
-	if opt.parallel {
-		mut pp := pool.new_pool_processor(maxjobs: runtime.nr_cpus() - 1, callback: async_run)
-		pp.work_on_items(jobs)
-		for job_res in pp.get_results<ShellJobResult>() {
-			util.verbosity_print_cmd(job_res.job.cmd, opt.verbosity)
-			util.exit_on_bad_result(job_res.result, '${job_res.job.cmd[0]} failed with return code $job_res.result.exit_code')
-			if opt.verbosity > 2 {
-				println(job_res.result.output)
+		o_file_path := os.join_path(build_dir,'o',arch)
+		o_ls := os.ls(o_file_path) or { []string{} }
+		for f in o_ls {
+			if f.ends_with('.o') {
+				o_files[arch] << os.join_path(o_file_path, f)
 			}
 		}
-	} else {
-		for job in jobs {
-			util.verbosity_print_cmd(job.cmd, opt.verbosity)
-			job_res := sync_run(job)
-			util.exit_on_bad_result(job_res.result, '${job.cmd[0]} failed with return code $job_res.result.exit_code')
-			if opt.verbosity > 2 {
-				println(job_res.result.output)
-			}
-		}
-	}
-	jobs.clear()
 
-	sdl_build_dir := os.join_path(opt.work_dir, 'sdl_build')
+	}
+
+	mut jobs := []ShellJob{}
 
 	// Cross compile .so lib files
 	for arch in archs {
 
+		//arch_o_dir := os.join_path(build_dir, 'o', arch)
 		arch_lib_dir := os.join_path(build_dir, 'lib', arch)
+		os.mkdir_all(arch_lib_dir) or {}
 
 		libsdl2_so_file := os.join_path(sdl_build_dir, 'lib', arch, 'libSDL2.so')
 
-
-		//os.mkdir_all(arch_lib_dir) or {
-		//	panic('$err_sig: failed making directory "$arch_lib_dir". $err')
+		//os.mkdir_all(arch_o_dir) or {
+		//	panic('$err_sig: failed making directory "$arch_o_dir". $err')
 		//}
+
+		arch_o_files := o_files[arch].map('"$it"')
 
 		mut args := []string{}
 		args << '-Wl,-soname,libmain.so -shared '
-		args << "$arch_lib_dir/sdl_${opt.lib_name}.o"
+		args << arch_o_files.join(' ')
+		//args << "$arch_o_dir/sdl_${opt.lib_name}.o"
 		args << '-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a'
 		args << libsdl2_so_file
-		args << arch_cflags[arch]
+		//args << arch_cflags[arch]
 		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--no-undefined -Wl,--fatal-warnings -lGLESv1_CM -lGLESv2 -llog -ldl -lc -lm'
-		// Compile .o
 
+		// Compile .so
 		build_cmd := [
 			arch_cc[arch]+'++',
 			args.join(' '),
@@ -1399,13 +1077,13 @@ pub fn vab_compile_clone(opt android.CompileOptions) ! {
 		// TODO fix DT_NAME crash instead of including a copy of the armeabi-v7a lib
 		armeabi_lib_dir := os.join_path(build_dir, 'lib', 'armeabi')
 		os.mkdir_all(armeabi_lib_dir) or {
-			return error('$err_sig: failed making directory "$armeabi_lib_dir". $err')
+			return error('$err_sig: failed making directory "$armeabi_lib_dir".\n$err')
 		}
 
 		armeabi_lib_src := os.join_path(build_dir, 'lib', 'armeabi-v7a', 'lib${opt.lib_name}.so')
 		armeabi_lib_dst := os.join_path(armeabi_lib_dir, 'lib${opt.lib_name}.so')
 		os.cp(armeabi_lib_src, armeabi_lib_dst) or {
-			return error('$err_sig: failed copying "$armeabi_lib_src" to "$armeabi_lib_dst". $err')
+			return error('$err_sig: failed copying "$armeabi_lib_src" to "$armeabi_lib_dst".\n$err')
 		}
 	}
 }
