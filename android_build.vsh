@@ -9,7 +9,7 @@ import os
 import flag
 import runtime
 import sync.pool
-import crypto.md5
+//import crypto.md5
 import vab.android
 import vab.android.sdk
 import vab.android.ndk
@@ -26,6 +26,7 @@ compile SDL for Android.
 '
 	exe_git_hash           = ab_commit_hash()
 	work_directory         = ab_work_dir()
+	cache_directory        = ab_cache_dir()
 	accepted_input_files   = ['.v', '.apk', '.aab']
 	supported_sdl_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
 		'2.0.20', '2.0.22']
@@ -196,7 +197,7 @@ fn main() {
 fn compile_sdl(opt CompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 
-	ndk_root := ndk.root_version(opt.ndk_version)
+	//ndk_root := ndk.root_version(opt.ndk_version)
 	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
 		return error('$err_sig: getting NDK sysroot path. $err')
 	}
@@ -624,8 +625,8 @@ fn compile_sdl(opt CompileOptions) ! {
 }
 
 fn compile_v_code(opt CompileOptions) ! {
-
-	// Keystore file
+	//err_sig := @MOD + '.' + @FN
+	// TODO Keystore file
 	mut keystore := android.Keystore{
 		path: ''
 	}
@@ -634,18 +635,34 @@ fn compile_v_code(opt CompileOptions) ! {
 			eprintln('Keystore "$keystore.path" is not a valid file')
 			eprintln('Notice: Signing with debug keystore')
 		}
-		keystore_dir := os.join_path(opt.work_dir, 'keystore')
-		if !os.is_dir(keystore_dir) {
-			os.mkdir_all(keystore_dir) or {
-				eprintln('Could make directory for debug keystore.\n$err')
-				exit(1)
-			}
+		keystore = android.default_keystore(cache_directory) or {
+			eprintln('Getting a default keystore failed.\n$err')
+			exit(1)
 		}
-		keystore.path = os.join_path(keystore_dir, 'debug.keystore')
+	} else {
+		keystore = android.resolve_keystore(keystore) or {
+			eprintln('Could not resolve keystore.\n$err')
+			exit(1)
+		}
 	}
-	keystore = android.resolve_keystore(keystore, opt.verbosity) !
+	if opt.verbosity > 1 {
+		println('Output will be signed with keystore at "$keystore.path"')
+	}
+
+
+/*
+	// Include NDK headers
+	mut android_includes := []string{}
+	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
+		return error('$err_sig: getting NDK sysroot path.\n$err')
+	}
+	android_includes << '-I"' + os.join_path(ndk_sysroot, 'usr', 'include') + '"'
+	android_includes << '-I"' + os.join_path(ndk_sysroot, 'usr', 'include', 'android') + '"'
+*/
+
 
 	mut c_flags := opt.c_flags
+	//c_flags << android_includes
 	c_flags << '-I"'+os.join_path(opt.sdl_config.root,'include')+'"'
 	c_flags << '-UNDEBUG'
 	c_flags << '-D_FORTIFY_SOURCE=2'
@@ -653,6 +670,9 @@ fn compile_v_code(opt CompileOptions) ! {
 	//c_flags << '-mthumb'
 	// V specific
 	c_flags << ['-Wno-int-to-pointer-cast']
+
+	// Even though not in use: prevent error: ("sokol_app.h: unknown 3D API selected for Android, must be SOKOL_GLES3 or SOKOL_GLES2")
+	c_flags << '-D_SOKOL_GLES2'
 
 	compile_cache_key := if os.is_dir(opt.input) /*|| input_ext == '.v'*/ { opt.input } else { '' }
 	comp_opt := android.CompileOptions{
@@ -662,7 +682,7 @@ fn compile_v_code(opt CompileOptions) ! {
 		parallel: opt.parallel
 		is_prod: opt.is_prod
 		no_printf_hijack: false
-		v_flags: ['-gc none']// opt.v_flags
+		//v_flags: ['-g','-gc boehm'] //['-gc none']// opt.v_flags
 		c_flags: c_flags
 		archs: opt.archs.filter(it.trim(' ') != '')
 		work_dir: opt.work_dir
@@ -689,8 +709,6 @@ fn compile_v_code(opt CompileOptions) ! {
 		lib_name: 'main' //opt.lib_name
 		activity_name: 'VSDLActivity'
 		package_id: 'io.v.android.ex'
-		//activity_name: 'SDLActivity' // activity_name
-		//package_id: 'org.libsdl.app'//'io.v.android.ex' //package_id
 		//format: android.PackageFormat.aab //format
 		format: android.PackageFormat.apk //format
 		//icon: opt.icon
@@ -831,6 +849,10 @@ fn resolve_options(mut opt Options, exit_on_error bool) {
 
 fn ab_work_dir() string {
 	return os.join_path(os.temp_dir(), 'v_sdl_android')
+}
+
+fn ab_cache_dir() string {
+	return os.join_path(os.cache_dir(), 'vab')
 }
 
 fn ab_commit_hash() string {
@@ -982,7 +1004,9 @@ fn sdl_environment(config SDLConfig) !SDLEnv {
 pub fn vab_compile(opt android.CompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 
-	android.compile(opt) or {} // Building the .so will fail
+	android.compile(opt) or {
+		println('Expected error?: $err')
+	} // Building the .so will fail
 
 	build_dir := opt.build_directory()!
 	sdl_build_dir := os.join_path(opt.work_dir, 'sdl_build')
@@ -1016,6 +1040,8 @@ pub fn vab_compile(opt android.CompileOptions) ! {
 
 	mut jobs := []ShellJob{}
 
+	mut ldflags := ['-lEGL','-lGLESv1_CM','-lGLESv2','-landroid','-llog', '-ldl', '-lc', '-lm']
+
 	// Cross compile .so lib files
 	for arch in archs {
 
@@ -1032,13 +1058,16 @@ pub fn vab_compile(opt android.CompileOptions) ! {
 		arch_o_files := o_files[arch].map('"$it"')
 
 		mut args := []string{}
+		//args << android_includes.join(' ')
 		args << '-Wl,-soname,libmain.so -shared '
 		args << arch_o_files.join(' ')
+
 		//args << "$arch_o_dir/sdl_${opt.lib_name}.o"
 		args << '-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a'
 		args << libsdl2_so_file
 		//args << arch_cflags[arch]
-		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--no-undefined -Wl,--fatal-warnings -lGLESv1_CM -lGLESv2 -llog -ldl -lc -lm'
+		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--no-undefined -Wl,--fatal-warnings'
+		args << ldflags.join(' ')
 
 		// Compile .so
 		build_cmd := [
@@ -1053,7 +1082,7 @@ pub fn vab_compile(opt android.CompileOptions) ! {
 	}
 
 	if opt.parallel {
-		mut pp := pool.new_pool_processor(maxjobs: runtime.nr_cpus() - 1, callback: async_run)
+		mut pp := pool.new_pool_processor(callback: async_run)
 		pp.work_on_items(jobs)
 		for job_res in pp.get_results<ShellJobResult>() {
 			util.verbosity_print_cmd(job_res.job.cmd, opt.verbosity)
