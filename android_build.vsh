@@ -649,18 +649,6 @@ fn compile_v_code(opt CompileOptions) ! {
 		println('Output will be signed with keystore at "$keystore.path"')
 	}
 
-
-/*
-	// Include NDK headers
-	mut android_includes := []string{}
-	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
-		return error('$err_sig: getting NDK sysroot path.\n$err')
-	}
-	android_includes << '-I"' + os.join_path(ndk_sysroot, 'usr', 'include') + '"'
-	android_includes << '-I"' + os.join_path(ndk_sysroot, 'usr', 'include', 'android') + '"'
-*/
-
-
 	mut c_flags := opt.c_flags
 	//c_flags << android_includes
 	c_flags << '-I"'+os.join_path(opt.sdl_config.root,'include')+'"'
@@ -672,7 +660,7 @@ fn compile_v_code(opt CompileOptions) ! {
 	c_flags << ['-Wno-int-to-pointer-cast']
 
 	// Even though not in use: prevent error: ("sokol_app.h: unknown 3D API selected for Android, must be SOKOL_GLES3 or SOKOL_GLES2")
-	c_flags << '-D_SOKOL_GLES2'
+	c_flags << '-DSOKOL_GLES2'
 
 	compile_cache_key := if os.is_dir(opt.input) /*|| input_ext == '.v'*/ { opt.input } else { '' }
 	comp_opt := android.CompileOptions{
@@ -1004,9 +992,10 @@ fn sdl_environment(config SDLConfig) !SDLEnv {
 pub fn vab_compile(opt android.CompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 
+	// TODO Building the .so will fail - but right now it's nice to piggyback on the part that succeeds
 	android.compile(opt) or {
-		println('Expected error?: $err')
-	} // Building the .so will fail
+		println('TODO Expected error?: $err')
+	}
 
 	build_dir := opt.build_directory()!
 	sdl_build_dir := os.join_path(opt.work_dir, 'sdl_build')
@@ -1040,7 +1029,7 @@ pub fn vab_compile(opt android.CompileOptions) ! {
 
 	mut jobs := []ShellJob{}
 
-	mut ldflags := ['-lEGL','-lGLESv1_CM','-lGLESv2','-landroid','-llog', '-ldl', '-lc', '-lm']
+	mut ldflags := ['-landroid','-llog', '-ldl', '-lc', '-lm','-lEGL','-lGLESv1_CM','-lGLESv2']
 
 	// Cross compile .so lib files
 	for arch in archs {
@@ -1058,15 +1047,17 @@ pub fn vab_compile(opt android.CompileOptions) ! {
 		arch_o_files := o_files[arch].map('"$it"')
 
 		mut args := []string{}
-		//args << android_includes.join(' ')
+		//args << '-v'
 		args << '-Wl,-soname,libmain.so -shared '
 		args << arch_o_files.join(' ')
 
-		//args << "$arch_o_dir/sdl_${opt.lib_name}.o"
 		args << '-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a'
 		args << libsdl2_so_file
 		//args << arch_cflags[arch]
-		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--no-undefined -Wl,--fatal-warnings'
+		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--fatal-warnings'
+		//args << '-Wl,--no-undefined' // NOTE SDL+Sokol
+
+		//args << '-L"' + arch_libs[arch] + '"'
 		args << ldflags.join(' ')
 
 		// Compile .so
