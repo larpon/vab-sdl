@@ -75,7 +75,8 @@ pub mut:
 	api_level       string   // Android API level to use when compiling
 	min_sdk_version int
 	//
-	env SDLEnv
+	env   SDLEnv
+	vmeta android.VMetaInfo
 }
 
 // build_directory returns a valid build directory.
@@ -282,37 +283,15 @@ fn main() {
 		api_level: opt.api_level
 		min_sdk_version: opt.min_sdk_version
 		env: sdl_env
+		vmeta: v_meta_dump
 	}
 
-	compile_sdl(sdl_comp_opt) or { panic(err) }
-
-	if 'sdl.mixer' in imported_modules {
-		// TODO can be auto detected
-		sdl_mixer_home := os.getenv('SDL_MIXER_HOME')
-		if !os.is_dir(sdl_mixer_home) {
-			panic(@MOD + '.' + @FN + ': could not locate SDL Mixer install at "$sdl_mixer_home"')
-		}
-		mix_env := sdl_mixer_environment(root: sdl_mixer_home)!
-		compile_sdl_mixer(env: mix_env, sdl_opt: sdl_comp_opt) or { panic(err) }
-
-		// TODO
-		sdl_comp_opt.cache = false
-		sdl_comp_opt.c_flags << '-I"'+mix_env.includes['libSDL2_mixer']['arm64-v8a'][0]+'"' // TODO
-		//println('DER $sdl_comp_opt.c_flags mix_env.includes')
-	}
-	/*
-	// TODO
-	if 'sdl.image' in imported_modules {
-		compile_sdl_image(sdl_comp_opt) or { panic(err) }
-	}
-	if 'sdl.ttf' in imported_modules {
-		compile_sdl_ttf(sdl_comp_opt) or { panic(err) }
-	}*/
+	compile_sdl(mut sdl_comp_opt) or { panic(err) }
 
 	compile_v_code(sdl_comp_opt) or { panic(err) }
 }
 
-fn compile_sdl(opt SDLCompileOptions) ! {
+fn compile_sdl(mut opt SDLCompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 
 	sdl_env := opt.env
@@ -713,6 +692,30 @@ fn compile_sdl(opt SDLCompileOptions) ! {
 			return error('$err_sig: failed copying "$cpufeatures_lib_src" to "$cpufeatures_lib_dst". $err')
 		}
 	}
+
+	imported_modules := opt.vmeta.imports
+	if 'sdl.mixer' in imported_modules {
+		// TODO can be auto detected
+		sdl_mixer_home := os.getenv('SDL_MIXER_HOME')
+		if !os.is_dir(sdl_mixer_home) {
+			panic(@MOD + '.' + @FN + ': could not locate SDL Mixer install at "$sdl_mixer_home"')
+		}
+		mix_env := sdl_mixer_environment(root: sdl_mixer_home)!
+		compile_sdl_mixer(env: mix_env, sdl_opt: opt) or { panic(err) }
+
+		// TODO
+		opt.cache = false
+		opt.c_flags << '-I"'+mix_env.includes['libSDL2_mixer']['arm64-v8a'][0]+'"' // TODO
+		//println('DER $sdl_comp_opt.c_flags mix_env.includes')
+	}
+	/*
+	// TODO
+	if 'sdl.image' in imported_modules {
+		compile_sdl_image(sdl_comp_opt) or { panic(err) }
+	}
+	if 'sdl.ttf' in imported_modules {
+		compile_sdl_ttf(sdl_comp_opt) or { panic(err) }
+	}*/
 }
 
 fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
@@ -1106,6 +1109,9 @@ fn compile_v_code(sdl_opt SDLCompileOptions) ! {
 	// And satisfy sokol_gfx.h:2571:2: error: "Please select a backend with SOKOL_GLCORE33, SOKOL_GLES2, SOKOL_GLES3, ... or SOKOL_DUMMY_BACKEND"
 	c_flags << '-DSOKOL_GLES2'
 
+	// Prevent: "ld: error: undefined symbol: glVertexAttribDivisorANGLE" etc.
+	c_flags << '-DGL_EXT_PROTOTYPES'
+
 	compile_cache_key := if os.is_dir(sdl_opt.input) { sdl_opt.input } else { '' } // || input_ext == '.v'
 	comp_opt := android.CompileOptions{
 		verbosity: sdl_opt.verbosity
@@ -1363,6 +1369,7 @@ pub fn vab_compile(opt android.CompileOptions, sdl_opt SDLCompileOptions) ! {
 
 	mut ldflags := ['-landroid', '-llog', '-ldl', '-lc', '-lm', '-lEGL', '-lGLESv1_CM', '-lGLESv2']
 
+	imported_modules := sdl_opt.vmeta.imports
 	// Cross compile .so lib files
 	for arch in archs {
 		// arch_o_dir := os.join_path(build_dir, 'o', arch)
@@ -1385,10 +1392,12 @@ pub fn vab_compile(opt android.CompileOptions, sdl_opt SDLCompileOptions) ! {
 
 		args << '-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a'
 		args << libsdl2_so_file
-		args << libsdl2_mixer_so_file
+		if 'sdl.mixer' in imported_modules {
+			args << libsdl2_mixer_so_file
+		}
 		// args << arch_cflags[arch]
 		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--fatal-warnings'
-		args << '-Wl,--no-undefined' // TODO SDL+Sokol
+		args << '-Wl,--no-undefined' // FIXED SDL+Sokol
 
 		// args << '-L"' + arch_libs[arch] + '"'
 		args << ldflags.join(' ')
