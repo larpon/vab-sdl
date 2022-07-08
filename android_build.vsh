@@ -2439,7 +2439,7 @@ fn sdl_image_environment(config SDLImageConfig) !SDLImageEnv {
 	mut ld_flags := map[string]map[string][]string{}
 	mut sources := map[string]map[string]map[string][]string{}
 
-	// jpg_root := os.join_path(root, 'external','jpeg-9b')
+	jpg_root := os.join_path(root, 'external', 'jpeg-9b')
 	png_root := os.join_path(root, 'external', 'libpng-1.6.37')
 	// webp_root := os.join_path(root, 'external','libwebp-1.0.2')
 
@@ -2515,12 +2515,67 @@ fn sdl_image_environment(config SDLImageConfig) !SDLImageEnv {
 		os.join_path(png_root, 'arm', 'palette_neon_intrinsics.c'),
 	]
 
+	// libjpeg
 	for arch in supported_archs {
-		/*
+		includes['libjpeg'][arch] << os.join_path(jpg_root)
+		sources['libjpeg'][arch]['c.arm'] << [
+			os.join_path(jpg_root, 'jaricom.c'),
+			os.join_path(jpg_root, 'jcapimin.c'),
+			os.join_path(jpg_root, 'jcapistd.c'),
+			os.join_path(jpg_root, 'jcarith.c'),
+			os.join_path(jpg_root, 'jccoefct.c'),
+			os.join_path(jpg_root, 'jccolor.c'),
+			os.join_path(jpg_root, 'jcdctmgr.c'),
+			os.join_path(jpg_root, 'jchuff.c'),
+			os.join_path(jpg_root, 'jcinit.c'),
+			os.join_path(jpg_root, 'jcmainct.c'),
+			os.join_path(jpg_root, 'jcmarker.c'),
+			os.join_path(jpg_root, 'jcmaster.c'),
+			os.join_path(jpg_root, 'jcomapi.c'),
+			os.join_path(jpg_root, 'jcparam.c'),
+			os.join_path(jpg_root, 'jcprepct.c'),
+			os.join_path(jpg_root, 'jcsample.c'),
+			os.join_path(jpg_root, 'jctrans.c'),
+			os.join_path(jpg_root, 'jdapimin.c'),
+			os.join_path(jpg_root, 'jdapistd.c'),
+			os.join_path(jpg_root, 'jdarith.c'),
+			os.join_path(jpg_root, 'jdatadst.c'),
+			os.join_path(jpg_root, 'jdatasrc.c'),
+			os.join_path(jpg_root, 'jdcoefct.c'),
+			os.join_path(jpg_root, 'jdcolor.c'),
+			os.join_path(jpg_root, 'jddctmgr.c'),
+			os.join_path(jpg_root, 'jdhuff.c'),
+			os.join_path(jpg_root, 'jdinput.c'),
+			os.join_path(jpg_root, 'jdmainct.c'),
+			os.join_path(jpg_root, 'jdmarker.c'),
+			os.join_path(jpg_root, 'jdmaster.c'),
+			os.join_path(jpg_root, 'jdmerge.c'),
+			os.join_path(jpg_root, 'jdpostct.c'),
+			os.join_path(jpg_root, 'jdsample.c'),
+			os.join_path(jpg_root, 'jdtrans.c'),
+			os.join_path(jpg_root, 'jerror.c'),
+			os.join_path(jpg_root, 'jfdctflt.c'),
+			os.join_path(jpg_root, 'jfdctfst.c'),
+			os.join_path(jpg_root, 'jfdctint.c'),
+			os.join_path(jpg_root, 'jidctflt.c'),
+			os.join_path(jpg_root, 'jquant1.c'),
+			os.join_path(jpg_root, 'jquant2.c'),
+			os.join_path(jpg_root, 'jutils.c'),
+			os.join_path(jpg_root, 'jmemmgr.c'),
+			os.join_path(jpg_root, 'jmem-android.c'),
+		]
+		sources['libjpeg'][arch]['c.arm'] << [
+			os.join_path(jpg_root, 'jidctint.c'),
+			os.join_path(jpg_root, 'jidctfst.c') // jidctfst.S SDL BUG see Android.mk,
+		]
+		c_flags['libjpeg'][arch] << '-DAVOID_TABLES -O3 -fstrict-aliasing -fprefetch-loop-arrays'.split(' ')
+	}
+
+	for arch in supported_archs {
 		if config.features.jpg {
-			includes['libSDL2_image'][arch] << includes['libSDL2_image'][arch].clone()
-			c_flags['libSDL2_image'][arch] << c_flags['libSDL2_image'][arch].clone()
-		}*/
+			includes['libSDL2_image'][arch] << includes['libjpeg'][arch].clone()
+			c_flags['libSDL2_image'][arch] << '-DLOAD_JPG'
+		}
 		if config.features.png {
 			includes['libSDL2_image'][arch] << includes['libpng'][arch].clone()
 			c_flags['libSDL2_image'][arch] << c_flags['libpng'][arch].clone()
