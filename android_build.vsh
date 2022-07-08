@@ -7,7 +7,7 @@ import vab.vxt
 // import vab.java
 import os
 import flag
-import runtime
+// import runtime
 import sync.pool
 // import crypto.md5
 import vab.android
@@ -37,8 +37,8 @@ struct Options {
 	verbosity int
 	work_dir  string = work_directory
 	//
-	parallel       bool = true // Run, what can be run, in parallel
-	cache          bool = true
+	parallel bool = true // Run, what can be run, in parallel
+	cache    bool = true
 	// Build specifics
 	c_flags   []string // flags passed to the C compiler(s)
 	v_flags   []string // flags passed to the V compiler
@@ -70,10 +70,12 @@ pub mut:
 	is_prod         bool
 	archs           []string // compile for these CPU architectures
 	c_flags         []string // flags to pass to the C compiler(s)
-	v_flags   []string // flags passed to the V compiler
+	v_flags         []string // flags passed to the V compiler
 	ndk_version     string   // version of the Android NDK to compile against
 	api_level       string   // Android API level to use when compiling
 	min_sdk_version int
+	//
+	libs_extra []string // paths to extra libs to include in the packaging
 	//
 	env   SDLEnv
 	vmeta android.VMetaInfo
@@ -81,7 +83,7 @@ pub mut:
 
 // build_directory returns a valid build directory.
 pub fn (opt SDLCompileOptions) build_directory() string {
-	return os.join_path(opt.work_dir, 'sdl','build',opt.env.version.replace('.',''))
+	return os.join_path(opt.work_dir, 'sdl', 'build', opt.env.version.replace('.', ''))
 }
 
 // archs returns an array of target architectures.
@@ -105,20 +107,20 @@ struct SDLConfig {
 }
 
 struct SDLEnv {
-	config SDLConfig
-	version      string
-	includes     map[string]map[string][]string // .includes['libSDL2'][arch] << h_file
-	sources      map[string]map[string]map[string][]string // .sources['libSDL2'][arch]['c'] << c_file
-	c_flags      map[string]map[string][]string // .c_flags['libSDL2'][arch] << '-DEFINE'
-	ld_flags     map[string]map[string][]string // .ld_flags['libSDL2'][arch] << '-ldl'
+	config   SDLConfig
+	version  string
+	includes map[string]map[string][]string // .includes['libSDL2'][arch] << h_file
+	sources  map[string]map[string]map[string][]string // .sources['libSDL2'][arch]['c'] << c_file
+	c_flags  map[string]map[string][]string // .c_flags['libSDL2'][arch] << '-DEFINE'
+	ld_flags map[string]map[string][]string // .ld_flags['libSDL2'][arch] << '-ldl'
 }
 
 struct SDLMixerFeatures {
 pub:
-	flac bool = true // if you want to support loading FLAC music with libFLAC
-	ogg bool // TODO = true // if you want to support loading OGG Vorbis music via Tremor
-	mp3_mpg123 bool = true // if you want to support loading MP3 music via MPG123
-	mod_modplug bool = true // if you want to support loading MOD music via modplug
+	flac         bool = true // if you want to support loading FLAC music with libFLAC
+	ogg          bool = true // if you want to support loading OGG Vorbis music via Tremor
+	mp3_mpg123   bool = true // if you want to support loading MP3 music via MPG123
+	mod_modplug  bool = true // if you want to support loading MOD music via modplug
 	mid_timidity bool // TODO = true // if you want to support TiMidity
 }
 
@@ -126,21 +128,48 @@ struct SDLMixerCompileOptions {
 pub:
 	//
 	sdl_opt SDLCompileOptions
-	env SDLMixerEnv
+	env     SDLMixerEnv
 }
 
 struct SDLMixerConfig {
 	features SDLMixerFeatures
-	root string
+	root     string
 }
 
 struct SDLMixerEnv {
-	config  SDLMixerConfig
-	version      string
-	includes     map[string]map[string][]string // .includes['libSDL2'][arch] << h_file
-	sources      map[string]map[string]map[string][]string // .sources['libSDL2'][arch]['c'] << c_file
-	c_flags      map[string]map[string][]string // .c_flags['libSDL2'][arch] << '-DEFINE'
-	ld_flags     map[string]map[string][]string // .ld_flags['libSDL2'][arch] << '-ldl'
+	config   SDLMixerConfig
+	version  string
+	includes map[string]map[string][]string // .includes['libSDL2'][arch] << h_file
+	sources  map[string]map[string]map[string][]string // .sources['libSDL2'][arch]['c'] << c_file
+	c_flags  map[string]map[string][]string // .c_flags['libSDL2'][arch] << '-DEFINE'
+	ld_flags map[string]map[string][]string // .ld_flags['libSDL2'][arch] << '-ldl'
+}
+
+struct SDLImageFeatures {
+	jpg  bool = true // if you want to support loading JPEG images
+	png  bool = true // if you want to support loading PNG images
+	webp bool = true // if you want to support loading WebP images
+}
+
+struct SDLImageCompileOptions {
+pub:
+	//
+	sdl_opt SDLCompileOptions
+	env     SDLImageEnv
+}
+
+struct SDLImageConfig {
+	features SDLImageFeatures
+	root     string
+}
+
+struct SDLImageEnv {
+	config   SDLImageConfig
+	version  string
+	includes map[string]map[string][]string // .includes['libSDL2_Image'][arch] << h_file
+	sources  map[string]map[string]map[string][]string // .sources['libSDL2_Image'][arch]['c'] << c_file
+	c_flags  map[string]map[string][]string // .c_flags['libSDL2_Image'][arch] << '-DEFINE'
+	ld_flags map[string]map[string][]string // .ld_flags['libSDL2_Image'][arch] << '-ldl'
 }
 
 struct ShellJob {
@@ -292,6 +321,54 @@ fn main() {
 }
 
 fn compile_sdl(mut opt SDLCompileOptions) ! {
+	compile_sdl2(mut opt)!
+
+	build_dir := opt.build_directory()
+
+	mut libs_extra := []string{}
+	libs_extra << os.join_path(build_dir, 'lib')
+
+	imported_modules := opt.vmeta.imports
+	if 'sdl.mixer' in imported_modules {
+		// TODO can be auto detected
+		sdl_mixer_home := os.getenv('SDL_MIXER_HOME')
+		if !os.is_dir(sdl_mixer_home) {
+			panic(@MOD + '.' + @FN + ': could not locate SDL Mixer install at "$sdl_mixer_home"')
+		}
+		mix_env := sdl_mixer_environment(root: sdl_mixer_home)!
+		compile_sdl2_mixer(env: mix_env, sdl_opt: opt) or { panic(err) }
+
+		libs_extra << os.join_path(build_dir, 'mixer', 'lib')
+
+		// TODO
+		opt.c_flags << '-I"' + mix_env.includes['libSDL2_mixer']['arm64-v8a'][0] + '"' // TODO
+		// println('DER $sdl_comp_opt.c_flags mix_env.includes')
+	}
+
+	if 'sdl.image' in imported_modules {
+		// TODO can be auto detected
+		sdl_image_home := os.getenv('SDL_IMAGE_HOME')
+		if !os.is_dir(sdl_image_home) {
+			panic(@MOD + '.' + @FN + ': could not locate SDL Image install at "$sdl_image_home"')
+		}
+		image_env := sdl_image_environment(root: sdl_image_home)!
+		compile_sdl2_image(env: image_env, sdl_opt: opt) or { panic(err) }
+
+		libs_extra << os.join_path(build_dir, 'image', 'lib')
+		// TODO
+		opt.cache = false
+		opt.c_flags << '-I"' + image_env.includes['libSDL2_image']['arm64-v8a'][0] + '"' // TODO
+	}
+
+	/*
+	// TODO
+	if 'sdl.ttf' in imported_modules {
+		compile_sdl_ttf(sdl_comp_opt) or { panic(err) }
+	}*/
+	opt.libs_extra << libs_extra
+}
+
+fn compile_sdl2(mut opt SDLCompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 
 	sdl_env := opt.env
@@ -335,7 +412,7 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 	mut defines := []string{}
 
 	if opt.is_prod {
-		cflags << ['-Os']
+		cflags << ['-O2']
 		defines << ['-DNDEBUG']
 	} else {
 		cflags << ['-O0']
@@ -358,7 +435,7 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 	}
 
 	cflags << ['-fno-limit-debug-info', '-fdata-sections', '-ffunction-sections',
-			'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
+		'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
 
 	cflags << ['--sysroot "$ndk_sysroot"']
 
@@ -411,7 +488,7 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 	// TODO clean up this mess
 	mut cpufeatures_c_args := []string{}
 	cpufeatures_c_args << ['-fno-limit-debug-info', '-fdata-sections', '-ffunction-sections',
-			'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
+		'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
 	cpufeatures_c_args << ['-g']
 	// DEBUG builds
 	if is_debug_build {
@@ -468,11 +545,11 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 			}
 
 			mut cpufeatures_m_cflags := []string{}
-			//if is_debug_build {
-				cpufeatures_m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
-				cpufeatures_m_cflags << '-MF"' +
-					os.join_path(arch_ndk_tmp_dir, os.file_name(cpufeatures_source_file).all_before_last('.') +
-					'.o.d"')
+			// if is_debug_build {
+			cpufeatures_m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
+			cpufeatures_m_cflags << '-MF"' +
+				os.join_path(arch_ndk_tmp_dir, os.file_name(cpufeatures_source_file).all_before_last('.') +
+				'.o.d"')
 			//}
 
 			cpufeatures_build_cmd := [
@@ -520,20 +597,20 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 				o_files[arch] << object_file
 
 				mut m_cflags := []string{}
-				//if is_debug_build {
-					m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
-					m_cflags << '-MF"' +
-						os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
-						'.o.d"')
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
 				//}
 
 				build_cmd := [
 					arch_cc[arch],
 					m_cflags.join(' '),
 					arch_cflags[arch].join(' '),
-					lib_c_flags[arch].join(' ')
+					lib_c_flags[arch].join(' '),
 					cflags.join(' '),
-					lib_includes[arch].map('-I"$it"').join(' ')
+					lib_includes[arch].map('-I"$it"').join(' '),
 					includes.join(' '),
 					defines.join(' '),
 					'-c "$source_file"',
@@ -570,9 +647,9 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 					arch_cc[arch],
 					m_cflags.join(' '),
 					arch_cflags[arch].join(' '),
-					lib_c_flags[arch].join(' ')
+					lib_c_flags[arch].join(' '),
 					cflags.join(' '),
-					lib_includes[arch].map('-I"$it"').join(' ')
+					lib_includes[arch].map('-I"$it"').join(' '),
 					includes.join(' '),
 					defines.join(' '),
 					'-c "$source_file"',
@@ -609,9 +686,9 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 					arch_cflags[arch].join(' '),
 					m_cflags.join(' '),
 					cppflags.join(' '),
-					lib_c_flags[arch].join(' ')
+					lib_c_flags[arch].join(' '),
 					cflags.join(' '),
-					lib_includes[arch].map('-I"$it"').join(' ')
+					lib_includes[arch].map('-I"$it"').join(' '),
 					includes.join(' '),
 					defines.join(' '),
 					'-c "$source_file"',
@@ -630,14 +707,14 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 			}
 		}
 	}
-	run_jobs(jobs,opt.parallel,opt.verbosity) !
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
 	jobs.clear()
 
 	// libSDL2.so linker flags
 	mut ldflags := []string{}
 	ldflags << ['-lc', '-lm']
 
-
+	// Build libSDL2.so
 	for lib in libs {
 		lib_ld_flags := sdl_env.ld_flags[lib].clone()
 		for arch in archs {
@@ -651,13 +728,13 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 				o_files[arch].map('"$it"').join(' '), // <ALL .o files produced above except cpu-features>
 				a_files[arch].map('"$it"').join(' '), // <path to>/libcpufeatures.a
 				'-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a',
-				//arch_cflags[arch].join(' '),
+				// arch_cflags[arch].join(' '),
 				'-no-canonical-prefixes',
 				'-Wl,--build-id',
 				'-stdlib=libstdc++',
 				'-Wl,--no-undefined',
 				'-Wl,--fatal-warnings',
-				lib_ld_flags[arch].join(' ')
+				lib_ld_flags[arch].join(' '),
 				ldflags.join(' '),
 				'-o "$lib_so_file"',
 			]
@@ -669,7 +746,7 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 		}
 	}
 
-	run_jobs(jobs,opt.parallel,opt.verbosity) !
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
 
 	unsafe { jobs.free() }
 
@@ -692,55 +769,31 @@ fn compile_sdl(mut opt SDLCompileOptions) ! {
 			return error('$err_sig: failed copying "$cpufeatures_lib_src" to "$cpufeatures_lib_dst". $err')
 		}
 	}
-
-	imported_modules := opt.vmeta.imports
-	if 'sdl.mixer' in imported_modules {
-		// TODO can be auto detected
-		sdl_mixer_home := os.getenv('SDL_MIXER_HOME')
-		if !os.is_dir(sdl_mixer_home) {
-			panic(@MOD + '.' + @FN + ': could not locate SDL Mixer install at "$sdl_mixer_home"')
-		}
-		mix_env := sdl_mixer_environment(root: sdl_mixer_home)!
-		compile_sdl_mixer(env: mix_env, sdl_opt: opt) or { panic(err) }
-
-		// TODO
-		opt.cache = false
-		opt.c_flags << '-I"'+mix_env.includes['libSDL2_mixer']['arm64-v8a'][0]+'"' // TODO
-		//println('DER $sdl_comp_opt.c_flags mix_env.includes')
-	}
-	/*
-	// TODO
-	if 'sdl.image' in imported_modules {
-		compile_sdl_image(sdl_comp_opt) or { panic(err) }
-	}
-	if 'sdl.ttf' in imported_modules {
-		compile_sdl_ttf(sdl_comp_opt) or { panic(err) }
-	}*/
 }
 
-fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
+fn compile_sdl2_mixer(mix_opt SDLMixerCompileOptions) ! {
 	err_sig := @MOD + '.' + @FN
 
 	opt := mix_opt.sdl_opt
-	sdl_env := opt.env
+	// sdl_env := opt.env
 	// ndk_root := ndk.root_version(opt.ndk_version)
 	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
 		return error('$err_sig: getting NDK sysroot path. $err')
 	}
 
 	sdl_build_dir := os.join_path(opt.build_directory())
-	build_dir := os.join_path(opt.build_directory(),'mixer')
+	build_dir := os.join_path(opt.build_directory(), 'mixer')
 
 	is_prod_build := opt.is_prod
-	is_debug_build := !is_prod_build
+	// is_debug_build := !is_prod_build
 
 	// TODO better caching, can fail if execution is aborted etc.
-	/*if opt.cache && os.exists(build_dir) {
+	if opt.cache && os.exists(build_dir) {
 		if opt.verbosity > 0 {
 			eprintln('Using cached SDL Mixer at "$build_dir"')
 		}
 		return
-	}*/
+	}
 
 	// Remove any previous builds
 	if os.is_dir(build_dir) {
@@ -761,8 +814,8 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 	mut defines := []string{}
 
 	if opt.is_prod {
-		cflags << ['-Os']
-		defines << ['-UNDEBUG']
+		cflags << ['-O2']
+		defines << ['-DNDEBUG']
 	} else {
 		cflags << ['-O0']
 		cflags << ['-g']
@@ -784,7 +837,7 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 	}
 
 	cflags << ['-fno-limit-debug-info', '-fdata-sections', '-ffunction-sections',
-			'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
+		'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
 
 	cflags << ['--sysroot "$ndk_sysroot"']
 
@@ -836,10 +889,10 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 			'-target ' + ndk.compiler_triplet(arch) + opt.min_sdk_version.str(),
 		]
 		if arch == 'armeabi-v7a' {
-			arch_cflags[arch] << ['-march=armv7-a','-mthumb']
+			arch_cflags[arch] << ['-march=armv7-a', '-mthumb']
 		}
 		if arch == 'x86' {
-			arch_cflags[arch] << ['-mstackrealign'] // SDL_mixer x86
+			arch_cflags[arch] << ['-mstackrealign'] // x86
 		}
 	}
 
@@ -857,13 +910,13 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 		for arch in archs {
 			lib_includes[arch] << opt.env.includes['libSDL2'][arch].clone() //.map('-I"$it"')
 			// Setup work directories
-			arch_o_dir := os.join_path(build_dir,lib, 'o', arch) // TODO sanitize lib name for filesystem?
+			arch_o_dir := os.join_path(build_dir, lib, 'o', arch) // TODO sanitize lib name for filesystem?
 			os.rmdir_all(arch_o_dir) or {}
 			os.mkdir_all(arch_o_dir) or {
 				return error('$err_sig: failed making directory "$arch_o_dir". $err')
 			}
 
-			//println('$lib -> $arch')
+			// println('$lib -> $arch')
 
 			for c_file in lib_sources[arch]['c'] {
 				source_file := c_file
@@ -872,12 +925,16 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 				lib_o_files[lib][arch] << object_file
 
 				mut m_cflags := []string{}
-				//if is_debug_build {
-					m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
-					m_cflags << '-MF"' +
-						os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
-						'.o.d"')
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
 				//}
+
+				if arch == 'armeabi-v7a' {
+					m_cflags << ['-thumb']
+				}
 
 				build_cmd := [
 					arch_cc[arch],
@@ -910,13 +967,12 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 				lib_o_files[lib][arch] << object_file
 
 				mut m_cflags := []string{}
-				//if is_debug_build {
-					m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
-					m_cflags << '-MF"' +
-						os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
-						'.o.d"')
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
 				//}
-
 
 				build_cmd := [
 					arch_cc_cpp[arch],
@@ -942,9 +998,48 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 					cmd: build_cmd
 				}
 			}
+
+			// Compile (without thumb) C files to object files
+			for c_arm_file in lib_sources[arch]['c.arm'] {
+				source_file := c_arm_file
+				object_file := os.join_path(arch_o_dir,
+					os.file_name(source_file).all_before_last('.') + '.o')
+
+				lib_o_files[lib][arch] << object_file
+
+				mut m_cflags := []string{}
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
+				//}
+
+				build_cmd := [
+					arch_cc[arch],
+					m_cflags.join(' '),
+					arch_cflags[arch].join(' '),
+					lib_c_flags[arch].join(' '),
+					cflags.join(' '),
+					lib_includes[arch].map('-I"$it"').join(' '),
+					includes.join(' '),
+					defines.join(' '),
+					'-c "$source_file"',
+					'-o "$object_file"',
+				]
+
+				jobs << ShellJob{
+					std_err: if opt.verbosity > 2 {
+						'Compiling for $arch (arm)   C SDL file "${os.file_name(c_arm_file)}"'
+					} else {
+						''
+					}
+					cmd: build_cmd
+				}
+			}
 		}
 	}
-	run_jobs(jobs,opt.parallel,opt.verbosity) !
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
 	jobs.clear()
 
 	// .o -> to .so/.a
@@ -962,7 +1057,7 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 
 		for arch in archs {
 			// Setup work directories
-			arch_lib_dir := os.join_path(build_dir,'lib', arch)
+			arch_lib_dir := os.join_path(build_dir, 'lib', arch)
 			os.mkdir_all(arch_lib_dir) or {
 				return error('$err_sig: failed making directory "$arch_lib_dir". $err')
 			}
@@ -975,7 +1070,6 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 			ldflags << ['-lc', '-lm']
 
 			if fe == '.a' {
-
 				lib_a_file := os.join_path(arch_lib_dir, lib_name)
 
 				build_a_cmd := [
@@ -1001,14 +1095,14 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 					lib_a_files[lib][arch].map('"$it"').join(' '),
 					'-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a',
 					arch_cflags[arch].join(' '),
-					os.join_path(sdl_build_dir,'lib', arch, 'libSDL2.so'),
+					os.join_path(sdl_build_dir, 'lib', arch, 'libSDL2.so'),
 					'-no-canonical-prefixes',
 					'-Wl,--build-id=sha1',
 					'-Wl,--no-rosegment',
 					'-stdlib=libstdc++',
 					'-Wl,--no-undefined',
 					'-Wl,--fatal-warnings',
-					lib_ld_flags[arch].join(' ')
+					lib_ld_flags[arch].join(' '),
 					ldflags.join(' '),
 					'-o "$lib_so_file"',
 				]
@@ -1016,20 +1110,24 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 				lib_so_files[arch] << lib_so_file
 
 				jobs << ShellJob{
-					std_err: if opt.verbosity > 1 { 'Compiling (dynamic) $lib for $arch' } else { '' }
+					std_err: if opt.verbosity > 1 {
+						'Compiling (dynamic) $lib for $arch'
+					} else {
+						''
+					}
 					cmd: build_so_cmd
 				}
 			}
 		}
 	}
-	run_jobs(jobs,opt.parallel,opt.verbosity) !
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
 	jobs.clear()
 
 	for arch in archs {
 		lib := 'libSDL2_mixer'
 		lib_name := '${lib}.so'
 		// Setup work directories
-		arch_lib_dir := os.join_path(build_dir,'lib', arch)
+		arch_lib_dir := os.join_path(build_dir, 'lib', arch)
 		os.mkdir_all(arch_lib_dir) or {
 			return error('$err_sig: failed making directory "$arch_lib_dir". $err')
 		}
@@ -1045,11 +1143,11 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 			'-Wl,-soname,$lib_name -shared',
 			lib_o_files[lib][arch].map('"$it"').join(' '),
 			lib_a_files[lib][arch].map('"$it"').join(' '),
-			lib_ao_files[arch].map('"$it"').join(' ')
+			lib_ao_files[arch].map('"$it"').join(' '),
 			'-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a',
 			arch_cflags[arch].join(' '),
-			lib_so_files[arch].map('"$it"').join(' ')
-			'"'+os.join_path(sdl_build_dir,'lib', arch, 'libSDL2.so')+'"',
+			lib_so_files[arch].map('"$it"').join(' '),
+			'"' + os.join_path(sdl_build_dir, 'lib', arch, 'libSDL2.so') + '"',
 			'-no-canonical-prefixes',
 			'-Wl,--build-id=sha1',
 			'-Wl,--no-rosegment',
@@ -1065,7 +1163,407 @@ fn compile_sdl_mixer(mix_opt SDLMixerCompileOptions) ! {
 			cmd: build_so_cmd
 		}
 	}
-	run_jobs(jobs,opt.parallel,opt.verbosity) !
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
+	jobs.clear()
+}
+
+fn compile_sdl2_image(image_opt SDLImageCompileOptions) ! {
+	err_sig := @MOD + '.' + @FN
+
+	opt := image_opt.sdl_opt
+	// sdl_env := opt.env
+	// ndk_root := ndk.root_version(opt.ndk_version)
+	ndk_sysroot := ndk.sysroot_path(opt.ndk_version) or {
+		return error('$err_sig: getting NDK sysroot path. $err')
+	}
+
+	sdl_build_dir := os.join_path(opt.build_directory())
+	build_dir := os.join_path(opt.build_directory(), 'image')
+
+	is_prod_build := opt.is_prod
+	is_debug_build := !is_prod_build
+
+	// TODO better caching, can fail if execution is aborted etc.
+	/*
+	if opt.cache && os.exists(build_dir) {
+		if opt.verbosity > 0 {
+			eprintln('Using cached SDL Image at "$build_dir"')
+		}
+		return
+	}*/
+
+	// Remove any previous builds
+	if os.is_dir(build_dir) {
+		os.rmdir_all(build_dir) or {
+			return error('$err_sig: failed removing previous build directory "$build_dir". $err')
+		}
+	}
+	os.mkdir_all(build_dir) or {
+		return error('$err_sig: failed making directory "$build_dir". $err')
+	}
+
+	// Resolve compiler flags
+	// For all C compilers
+	mut cflags := opt.c_flags
+
+	// For all compilers
+	mut includes := []string{}
+	mut defines := []string{}
+
+	if opt.is_prod {
+		cflags << ['-O2']
+		defines << ['-DNDEBUG']
+	} else {
+		cflags << ['-O0']
+		cflags << ['-g']
+		defines << ['-UNDEBUG']
+	}
+
+	// Resolve what architectures to compile for
+	mut archs := opt.archs()!
+	// Compile sources for all Android archs if no valid archs found
+	if archs.len <= 0 {
+		archs = android.default_archs.clone()
+	}
+	if opt.verbosity > 0 {
+		eprintln('Compiling SDL Image to $archs' + if opt.parallel { ' in parallel' } else { '' })
+	}
+
+	if opt.verbosity > 3 {
+		cflags << ['-v'] // Verbose clang
+	}
+
+	cflags << ['-fno-limit-debug-info', '-fdata-sections', '-ffunction-sections',
+		'-fstack-protector-strong', '-funwind-tables', '-no-canonical-prefixes']
+
+	cflags << ['--sysroot "$ndk_sysroot"']
+
+	// Defaults
+	cflags << ['-Wall', '-Wextra', '-Wformat', '-Werror=format-security']
+
+	// TODO Unfixed NDK/Gradle (?)
+	cflags << ['-Wno-invalid-command-line-argument', '-Wno-unused-command-line-argument']
+
+	// SDL/JNI specifics that aren't fixed yet
+	cflags << ['-Wno-unused-parameter', '-Wno-sign-compare']
+
+	cflags << ['-fPIC']
+	// '-mthumb' except for SDL_atomic.c / SDL_spinlock.c
+
+	defines << ['-D_FORTIFY_SOURCE=2']
+	defines << ['-DANDROID']
+
+	if opt.verbosity > 0 {
+		eprintln('Compiling SDL2_image + dependencies to .o')
+	}
+
+	mut arch_cc := map[string]string{}
+	mut arch_cc_cpp := map[string]string{}
+	mut arch_ar := map[string]string{}
+	// mut arch_libs := map[string]string{}
+
+	mut arch_cflags := map[string][]string{}
+	for arch in archs {
+		// TODO introduce method to get just the `clang` or `clang++` base wrapper
+		c_compiler := ndk.compiler(.c, opt.ndk_version, arch, opt.api_level) or {
+			return error('$err_sig: failed getting NDK compiler. $err')
+		}
+		arch_cc[arch] = c_compiler
+
+		cpp_compiler := ndk.compiler(.cpp, opt.ndk_version, arch, opt.api_level) or {
+			return error('$err_sig: failed getting NDK compiler. $err')
+		}
+		arch_cc_cpp[arch] = cpp_compiler
+
+		ar_tool := ndk.tool(.ar, opt.ndk_version, arch) or {
+			return error('$err_sig: failed getting ar tool. $err')
+		}
+		arch_ar[arch] = ar_tool
+
+		// Architechture dependent flags
+		// TODO min_sdk_version SDL builds with 16 as lowest for the 32-bit archs?!
+		arch_cflags[arch] << [
+			'-target ' + ndk.compiler_triplet(arch) + opt.min_sdk_version.str(),
+		]
+		if arch == 'armeabi-v7a' {
+			arch_cflags[arch] << ['-march=armv7-a']
+		}
+		if arch == 'x86' {
+			arch_cflags[arch] << ['-mstackrealign'] // x86
+		}
+	}
+
+	mut jobs := []ShellJob{}
+	mut lib_o_files := map[string]map[string][]string{}
+	mut lib_so_files := map[string][]string{}
+	mut lib_ao_files := map[string][]string{}
+	mut lib_a_files := map[string]map[string][]string{}
+	// .c -> .o/.a files
+	libs := image_opt.env.sources.keys()
+	for lib in libs {
+		mut lib_includes := image_opt.env.includes[lib].clone()
+		lib_sources := image_opt.env.sources[lib].clone()
+		lib_c_flags := image_opt.env.c_flags[lib].clone()
+		for arch in archs {
+			lib_includes[arch] << opt.env.includes['libSDL2'][arch].clone() //.map('-I"$it"')
+			// Setup work directories
+			arch_o_dir := os.join_path(build_dir, lib, 'o', arch) // TODO sanitize lib name for filesystem?
+			os.rmdir_all(arch_o_dir) or {}
+			os.mkdir_all(arch_o_dir) or {
+				return error('$err_sig: failed making directory "$arch_o_dir". $err')
+			}
+
+			// println('$lib -> $arch')
+
+			for c_file in lib_sources[arch]['c'] {
+				source_file := c_file
+				object_file := os.join_path(arch_o_dir,
+					os.file_name(source_file).all_before_last('.') + '.o')
+				lib_o_files[lib][arch] << object_file
+
+				mut m_cflags := []string{}
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
+				//}
+
+				if arch == 'armeabi-v7a' {
+					m_cflags << ['-thumb']
+				}
+
+				build_cmd := [
+					arch_cc[arch],
+					m_cflags.join(' '),
+					arch_cflags[arch].join(' '),
+					cflags.join(' '),
+					lib_c_flags[arch].join(' '),
+					includes.join(' '),
+					lib_includes[arch].map('-I"$it"').join(' '),
+					defines.join(' '),
+					'-c "$source_file"',
+					'-o "$object_file"',
+				]
+
+				jobs << ShellJob{
+					std_err: if opt.verbosity > 2 {
+						mut thumb := if arch == 'armeabi-7va' { '(thumb)' } else { '' }
+						'Compiling $lib for $arch $thumb C file "${os.file_name(c_file)}"'
+					} else {
+						''
+					}
+					cmd: build_cmd
+				}
+			}
+
+			for cpp_file in lib_sources[arch]['cpp'] {
+				source_file := cpp_file
+				object_file := os.join_path(arch_o_dir,
+					os.file_name(source_file).all_before_last('.') + '.o')
+				lib_o_files[lib][arch] << object_file
+
+				mut m_cflags := []string{}
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
+				//}
+
+				build_cmd := [
+					arch_cc_cpp[arch],
+					m_cflags.join(' '),
+					'-fno-exceptions -fno-rtti', // NOTE prevents ld error "undefined reference to `__gxx_personality_v0'"
+					arch_cflags[arch].join(' '),
+					cflags.join(' '),
+					lib_c_flags[arch].join(' '),
+					includes.join(' '),
+					lib_includes[arch].map('-I"$it"').join(' '),
+					defines.join(' '),
+					'-c "$source_file"',
+					'-o "$object_file"',
+				]
+
+				jobs << ShellJob{
+					std_err: if opt.verbosity > 2 {
+						mut thumb := if arch == 'armeabi-7va' { '(thumb)' } else { '' }
+						'Compiling $lib for $arch $thumb C++ file "${os.file_name(cpp_file)}"'
+					} else {
+						''
+					}
+					cmd: build_cmd
+				}
+			}
+
+			// Compile (without thumb) C files to object files
+			for c_arm_file in lib_sources[arch]['c.arm'] {
+				source_file := c_arm_file
+				object_file := os.join_path(arch_o_dir,
+					os.file_name(source_file).all_before_last('.') + '.o')
+
+				lib_o_files[lib][arch] << object_file
+
+				mut m_cflags := []string{}
+				// if is_debug_build {
+				m_cflags << ['-MMD', '-MP']
+				m_cflags << '-MF"' +
+					os.join_path(arch_o_dir, os.file_name(source_file).all_before_last('.') +
+					'.o.d"')
+				//}
+
+				build_cmd := [
+					arch_cc[arch],
+					m_cflags.join(' '),
+					arch_cflags[arch].join(' '),
+					lib_c_flags[arch].join(' '),
+					cflags.join(' '),
+					lib_includes[arch].map('-I"$it"').join(' '),
+					includes.join(' '),
+					defines.join(' '),
+					'-c "$source_file"',
+					'-o "$object_file"',
+				]
+
+				jobs << ShellJob{
+					std_err: if opt.verbosity > 2 {
+						'Compiling for $arch (arm)   C SDL file "${os.file_name(c_arm_file)}"'
+					} else {
+						''
+					}
+					cmd: build_cmd
+				}
+			}
+		}
+	}
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
+	jobs.clear()
+
+	// .o -> to .so/.a
+	for lib in libs {
+		lib_ld_flags := image_opt.env.ld_flags[lib].clone()
+		if lib == 'libSDL2_image' {
+			continue
+		}
+
+		mut fe := '.a'
+		// if lib == 'libmpg123' {
+		//	fe = '.so'
+		//}
+		lib_name := '$lib$fe'
+
+		for arch in archs {
+			// Setup work directories
+			arch_lib_dir := os.join_path(build_dir, 'lib', arch)
+			os.mkdir_all(arch_lib_dir) or {
+				return error('$err_sig: failed making directory "$arch_lib_dir". $err')
+			}
+
+			// linker flags
+			mut ldflags := []string{}
+			if fe == '.so' {
+				ldflags << '-ldl'
+			}
+			ldflags << ['-lc', '-lm']
+
+			if fe == '.a' {
+				lib_a_file := os.join_path(arch_lib_dir, lib_name)
+
+				build_a_cmd := [
+					arch_ar[arch],
+					'crsD',
+					'"$lib_a_file"',
+					lib_o_files[lib][arch].map('"$it"').join(' '),
+				]
+
+				lib_ao_files[arch] << lib_a_file
+
+				jobs << ShellJob{
+					std_err: if opt.verbosity > 1 { 'Compiling (static) $lib for $arch' } else { '' }
+					cmd: build_a_cmd
+				}
+			} else {
+				lib_so_file := os.join_path(arch_lib_dir, lib_name)
+				// Finally, build libXXX.so
+				build_so_cmd := [
+					arch_cc_cpp[arch],
+					'-Wl,-soname,$lib_name -shared',
+					lib_o_files[lib][arch].map('"$it"').join(' '),
+					lib_a_files[lib][arch].map('"$it"').join(' '),
+					'-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a',
+					arch_cflags[arch].join(' '),
+					os.join_path(sdl_build_dir, 'lib', arch, 'libSDL2.so'),
+					'-no-canonical-prefixes',
+					'-Wl,--build-id=sha1',
+					'-Wl,--no-rosegment',
+					'-stdlib=libstdc++',
+					'-Wl,--no-undefined',
+					'-Wl,--fatal-warnings',
+					lib_ld_flags[arch].join(' '),
+					ldflags.join(' '),
+					'-o "$lib_so_file"',
+				]
+
+				lib_so_files[arch] << lib_so_file
+
+				jobs << ShellJob{
+					std_err: if opt.verbosity > 1 {
+						'Compiling (dynamic) $lib for $arch'
+					} else {
+						''
+					}
+					cmd: build_so_cmd
+				}
+			}
+		}
+	}
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
+	jobs.clear()
+
+	for arch in archs {
+		lib := 'libSDL2_image'
+		lib_name := '${lib}.so'
+		// Setup work directories
+		arch_lib_dir := os.join_path(build_dir, 'lib', arch)
+		os.mkdir_all(arch_lib_dir) or {
+			return error('$err_sig: failed making directory "$arch_lib_dir". $err')
+		}
+
+		// linker flags
+		mut ldflags := []string{}
+		ldflags << ['-ldl', '-lc', '-lm'] // ,'-lstdc++'
+		if image_opt.env.config.features.png {
+			ldflags << '-lz'
+		}
+
+		lib_so_file := os.join_path(arch_lib_dir, lib_name)
+		// Finally, build libXXX.so
+		build_so_cmd := [
+			arch_cc_cpp[arch],
+			'-Wl,-soname,$lib_name -shared',
+			lib_o_files[lib][arch].map('"$it"').join(' '),
+			lib_a_files[lib][arch].map('"$it"').join(' '),
+			lib_ao_files[arch].map('"$it"').join(' '),
+			'-lgcc -Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libgcc_real.a -latomic -Wl,--exclude-libs,libatomic.a',
+			arch_cflags[arch].join(' '),
+			lib_so_files[arch].map('"$it"').join(' '),
+			'"' + os.join_path(sdl_build_dir, 'lib', arch, 'libSDL2.so') + '"',
+			'-no-canonical-prefixes',
+			'-Wl,--build-id=sha1',
+			'-Wl,--no-rosegment', // TODO
+			'-stdlib=libstdc++',
+			'-Wl,--no-undefined',
+			'-Wl,--fatal-warnings',
+			ldflags.join(' '),
+			'-o "$lib_so_file"',
+		]
+
+		jobs << ShellJob{
+			std_err: if opt.verbosity > 1 { 'Compiling $lib for $arch' } else { '' }
+			cmd: build_so_cmd
+		}
+	}
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
 	jobs.clear()
 }
 
@@ -1120,7 +1618,7 @@ fn compile_v_code(sdl_opt SDLCompileOptions) ! {
 		parallel: sdl_opt.parallel
 		is_prod: sdl_opt.is_prod
 		no_printf_hijack: false
- 		v_flags: sdl_opt.v_flags //['-g','-gc boehm'] //['-gc none']
+		v_flags: sdl_opt.v_flags //['-g','-gc boehm'] //['-gc none']
 		c_flags: c_flags
 		archs: sdl_opt.archs.filter(it.trim(' ') != '')
 		work_dir: sdl_opt.work_dir
@@ -1153,8 +1651,8 @@ fn compile_v_code(sdl_opt SDLCompileOptions) ! {
 		version_code: 0 // sdl_opt.version_code
 		v_flags: sdl_opt.v_flags
 		input: sdl_opt.input
-		assets_extra: ['/home/lmp/.vmodules/sdl/examples/assets']//sdl_opt.assets_extra
-		libs_extra: [os.join_path(sdl_opt.build_directory(), 'lib'),os.join_path(sdl_opt.build_directory(),'mixer','lib')] // sdl_opt.libs_extra
+		assets_extra: ['/home/lmp/.vmodules/sdl/examples/assets'] // sdl_opt.assets_extra
+		libs_extra: sdl_opt.libs_extra
 		output_file: '/tmp/t.apk' // sdl_opt.output
 		keystore: keystore
 		base_files: os.join_path('$os.home_dir()/.vmodules/vab', 'platforms', 'android')
@@ -1377,7 +1875,8 @@ pub fn vab_compile(opt android.CompileOptions, sdl_opt SDLCompileOptions) ! {
 		os.mkdir_all(arch_lib_dir) or {}
 
 		libsdl2_so_file := os.join_path(sdl_build_dir, 'lib', arch, 'libSDL2.so')
-		libsdl2_mixer_so_file := os.join_path(sdl_build_dir,'mixer', 'lib', arch, 'libSDL2_mixer.so')
+		libsdl2_mixer_so_file := os.join_path(sdl_build_dir, 'mixer', 'lib', arch, 'libSDL2_mixer.so')
+		libsdl2_image_so_file := os.join_path(sdl_build_dir, 'image', 'lib', arch, 'libSDL2_image.so')
 
 		// os.mkdir_all(arch_o_dir) or {
 		//	panic('$err_sig: failed making directory "$arch_o_dir". $err')
@@ -1394,6 +1893,9 @@ pub fn vab_compile(opt android.CompileOptions, sdl_opt SDLCompileOptions) ! {
 		args << libsdl2_so_file
 		if 'sdl.mixer' in imported_modules {
 			args << libsdl2_mixer_so_file
+		}
+		if 'sdl.image' in imported_modules {
+			args << libsdl2_image_so_file
 		}
 		// args << arch_cflags[arch]
 		args << '-no-canonical-prefixes -Wl,--build-id -stdlib=libstdc++ -Wl,--fatal-warnings'
@@ -1414,7 +1916,7 @@ pub fn vab_compile(opt android.CompileOptions, sdl_opt SDLCompileOptions) ! {
 		}
 	}
 
-	run_jobs(jobs,opt.parallel,opt.verbosity)!
+	run_jobs(jobs, opt.parallel, opt.verbosity)!
 
 	if 'armeabi-v7a' in archs {
 		// TODO fix DT_NAME crash instead of including a copy of the armeabi-v7a lib
@@ -1529,22 +2031,26 @@ fn sdl_environment(config SDLConfig) !SDLEnv {
 	for arch in supported_archs {
 		includes['libSDL2'][arch] << os.join_path(root, 'include')
 	}
-	mut sources  :=  map[string]map[string]map[string][]string{}
+	mut sources := map[string]map[string]map[string][]string{}
 	for arch in supported_archs {
 		sources['libSDL2'][arch]['c'] << c_files
 		sources['libSDL2'][arch]['cpp'] << cpp_files
 		sources['libSDL2'][arch]['c.arm'] << c_arm_files
 	}
 
-	mut c_flags  := map[string]map[string][]string{}
+	mut c_flags := map[string]map[string][]string{}
 	for arch in supported_archs {
 		c_flags['libSDL2'][arch] << '-DGL_GLEXT_PROTOTYPES'
-		c_flags['libSDL2'][arch] << ['-Wall','-Wextra','-Wdocumentation','-Wdocumentation-unknown-command','-Wmissing-prototypes','-Wunreachable-code-break','-Wunneeded-internal-declaration','-Wmissing-variable-declarations','-Wfloat-conversion','-Wshorten-64-to-32','-Wunreachable-code-return','-Wshift-sign-overflow','-Wstrict-prototypes','-Wkeyword-macro']
+		c_flags['libSDL2'][arch] << ['-Wall', '-Wextra', '-Wdocumentation',
+			'-Wdocumentation-unknown-command', '-Wmissing-prototypes', '-Wunreachable-code-break',
+			'-Wunneeded-internal-declaration', '-Wmissing-variable-declarations',
+			'-Wfloat-conversion', '-Wshorten-64-to-32', '-Wunreachable-code-return',
+			'-Wshift-sign-overflow', '-Wstrict-prototypes', '-Wkeyword-macro']
 		// SDL/JNI specifics that aren't fixed yet
 		c_flags['libSDL2'][arch] << '-Wno-unused-parameter -Wno-sign-compare'.split(' ')
 	}
 
-	mut ld_flags  := map[string]map[string][]string{}
+	mut ld_flags := map[string]map[string][]string{}
 	for arch in supported_archs {
 		ld_flags['libSDL2'][arch] << '-ldl -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid'.split(' ')
 	}
@@ -1560,7 +2066,7 @@ fn sdl_environment(config SDLConfig) !SDLEnv {
 }
 
 fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
-	err_sig := @MOD + '.' + @FN
+	// err_sig := @MOD + '.' + @FN
 	root := os.real_path(config.root)
 
 	supported_archs := unsafe { ndk.supported_archs }
@@ -1569,18 +2075,17 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 
 	mut includes := map[string]map[string][]string{}
 	mut c_flags := map[string]map[string][]string{}
-	mut sources  :=  map[string]map[string]map[string][]string{}
+	mut sources := map[string]map[string]map[string][]string{}
 
-
-	ogg_root := os.join_path(root, 'external','libogg-1.3.2')
-	vorbis_root := os.join_path(root, 'external','libvorbisidec-1.2.1')
+	ogg_root := os.join_path(root, 'external', 'libogg-1.3.2')
+	vorbis_root := os.join_path(root, 'external', 'libvorbisidec-1.2.1')
 	// libFLAC
-	flac_root := os.join_path(root, 'external','flac-1.3.2')
-	lib_flac_root := os.join_path(flac_root,'src','libFLAC')
+	flac_root := os.join_path(root, 'external', 'flac-1.3.2')
+	lib_flac_root := os.join_path(flac_root, 'src', 'libFLAC')
 	// libmpg123
-	mpg123_root := os.join_path(root, 'external','mpg123-1.25.6')
+	mpg123_root := os.join_path(root, 'external', 'mpg123-1.25.6')
 	// libmodplug
-	modplug_root := os.join_path(root, 'external','libmodplug-0.8.9.0')
+	modplug_root := os.join_path(root, 'external', 'libmodplug-0.8.9.0')
 	// TiMidity
 	timidity_root := os.join_path(root, 'timidity')
 
@@ -1594,7 +2099,7 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 
 	// SDL_mixer .c files
 	collect_flat_ext(root, mut srcs, '.c')
-	srcs = srcs.filter(os.file_name(it) !in ['playmus.c','playwave.c'])
+	srcs = srcs.filter(os.file_name(it) !in ['playmus.c', 'playwave.c'])
 	for arch in supported_archs {
 		sources['libSDL2_mixer'][arch]['c'] << srcs.clone()
 	}
@@ -1602,51 +2107,52 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 
 	// libFLAC
 	for arch in supported_archs {
-		includes['libFLAC'][arch] << os.join_path(flac_root,'include')
-		includes['libFLAC'][arch] << os.join_path(lib_flac_root,'include')
-		includes['libFLAC'][arch] << os.join_path(ogg_root,'include')
-		includes['libFLAC'][arch] << os.join_path(ogg_root,'android')
-		c_flags['libFLAC'][arch] << '-include "'+os.join_path(flac_root,'android','config.h')+'"'
+		includes['libFLAC'][arch] << os.join_path(flac_root, 'include')
+		includes['libFLAC'][arch] << os.join_path(lib_flac_root, 'include')
+		includes['libFLAC'][arch] << os.join_path(ogg_root, 'include')
+		includes['libFLAC'][arch] << os.join_path(ogg_root, 'android')
+		c_flags['libFLAC'][arch] << '-include "' + os.join_path(flac_root, 'android', 'config.h') +
+			'"'
 		sources['libFLAC'][arch]['c'] << [
-			os.join_path(lib_flac_root,'bitmath.c')
-			os.join_path(lib_flac_root,'bitreader.c')
-			os.join_path(lib_flac_root,'bitwriter.c')
-			os.join_path(lib_flac_root,'cpu.c')
-			os.join_path(lib_flac_root,'crc.c')
-			os.join_path(lib_flac_root,'fixed.c')
-			os.join_path(lib_flac_root,'fixed_intrin_sse2.c')
-			os.join_path(lib_flac_root,'fixed_intrin_ssse3.c')
-			os.join_path(lib_flac_root,'float.c')
-			os.join_path(lib_flac_root,'format.c')
-			os.join_path(lib_flac_root,'lpc.c')
-			os.join_path(lib_flac_root,'lpc_intrin_sse.c')
-			os.join_path(lib_flac_root,'lpc_intrin_sse2.c')
-			os.join_path(lib_flac_root,'lpc_intrin_sse41.c')
-			os.join_path(lib_flac_root,'lpc_intrin_avx2.c')
-			os.join_path(lib_flac_root,'md5.c')
-			os.join_path(lib_flac_root,'memory.c')
-			os.join_path(lib_flac_root,'metadata_iterators.c')
-			os.join_path(lib_flac_root,'metadata_object.c')
-			os.join_path(lib_flac_root,'stream_decoder.c')
-			os.join_path(lib_flac_root,'stream_encoder.c')
-			os.join_path(lib_flac_root,'stream_encoder_intrin_sse2.c')
-			os.join_path(lib_flac_root,'stream_encoder_intrin_ssse3.c')
-			os.join_path(lib_flac_root,'stream_encoder_intrin_avx2.c')
-			os.join_path(lib_flac_root,'stream_encoder_framing.c')
-			os.join_path(lib_flac_root,'window.c')
-			os.join_path(lib_flac_root,'ogg_decoder_aspect.c')
-			os.join_path(lib_flac_root,'ogg_encoder_aspect.c')
-			os.join_path(lib_flac_root,'ogg_helper.c')
-			os.join_path(lib_flac_root,'ogg_mapping.c')
+			os.join_path(lib_flac_root, 'bitmath.c'),
+			os.join_path(lib_flac_root, 'bitreader.c'),
+			os.join_path(lib_flac_root, 'bitwriter.c'),
+			os.join_path(lib_flac_root, 'cpu.c'),
+			os.join_path(lib_flac_root, 'crc.c'),
+			os.join_path(lib_flac_root, 'fixed.c'),
+			os.join_path(lib_flac_root, 'fixed_intrin_sse2.c'),
+			os.join_path(lib_flac_root, 'fixed_intrin_ssse3.c'),
+			os.join_path(lib_flac_root, 'float.c'),
+			os.join_path(lib_flac_root, 'format.c'),
+			os.join_path(lib_flac_root, 'lpc.c'),
+			os.join_path(lib_flac_root, 'lpc_intrin_sse.c'),
+			os.join_path(lib_flac_root, 'lpc_intrin_sse2.c'),
+			os.join_path(lib_flac_root, 'lpc_intrin_sse41.c'),
+			os.join_path(lib_flac_root, 'lpc_intrin_avx2.c'),
+			os.join_path(lib_flac_root, 'md5.c'),
+			os.join_path(lib_flac_root, 'memory.c'),
+			os.join_path(lib_flac_root, 'metadata_iterators.c'),
+			os.join_path(lib_flac_root, 'metadata_object.c'),
+			os.join_path(lib_flac_root, 'stream_decoder.c'),
+			os.join_path(lib_flac_root, 'stream_encoder.c'),
+			os.join_path(lib_flac_root, 'stream_encoder_intrin_sse2.c'),
+			os.join_path(lib_flac_root, 'stream_encoder_intrin_ssse3.c'),
+			os.join_path(lib_flac_root, 'stream_encoder_intrin_avx2.c'),
+			os.join_path(lib_flac_root, 'stream_encoder_framing.c'),
+			os.join_path(lib_flac_root, 'window.c'),
+			os.join_path(lib_flac_root, 'ogg_decoder_aspect.c'),
+			os.join_path(lib_flac_root, 'ogg_encoder_aspect.c'),
+			os.join_path(lib_flac_root, 'ogg_helper.c'),
+			os.join_path(lib_flac_root, 'ogg_mapping.c'),
 		]
 	}
 
 	// libmpg123
 	for arch in supported_archs {
-		includes['libmpg123'][arch] << os.join_path(mpg123_root,'android')
-		includes['libmpg123'][arch] << os.join_path(mpg123_root,'src')
-		includes['libmpg123'][arch] << os.join_path(mpg123_root,'src/compat')
-		includes['libmpg123'][arch] << os.join_path(mpg123_root,'src/libmpg123')
+		includes['libmpg123'][arch] << os.join_path(mpg123_root, 'android')
+		includes['libmpg123'][arch] << os.join_path(mpg123_root, 'src')
+		includes['libmpg123'][arch] << os.join_path(mpg123_root, 'src/compat')
+		includes['libmpg123'][arch] << os.join_path(mpg123_root, 'src/libmpg123')
 	}
 
 	// neon
@@ -1658,147 +2164,146 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 	// x86_64
 	c_flags['libmpg123']['x86_64'] << '-DOPT_MULTI -DOPT_X86_64 -DOPT_GENERIC -DOPT_GENERIC_DITHER -DREAL_IS_FLOAT -DOPT_AVX'.split(' ')
 
-
 	// libmpg123 .c files
-	libmpg123_src := os.join_path(mpg123_root,'src','libmpg123')
-	libmpg123_compat_src := os.join_path(mpg123_root,'src','compat')
+	libmpg123_src := os.join_path(mpg123_root, 'src', 'libmpg123')
+	libmpg123_compat_src := os.join_path(mpg123_root, 'src', 'compat')
 	sources['libmpg123']['armeabi-v7a']['c'] << [
-		os.join_path(libmpg123_src,'stringbuf.c'),
-		os.join_path(libmpg123_src,'icy.c'),
-		os.join_path(libmpg123_src,'icy2utf8.c'),
-		os.join_path(libmpg123_src,'ntom.c'),
-		os.join_path(libmpg123_src,'synth.c'),
-		os.join_path(libmpg123_src,'synth_8bit.c'),
-		os.join_path(libmpg123_src,'layer1.c'),
-		os.join_path(libmpg123_src,'layer2.c'),
-		os.join_path(libmpg123_src,'layer3.c'),
-		os.join_path(libmpg123_src,'dct36_neon.S'),
-		os.join_path(libmpg123_src,'dct64_neon_float.S'),
-		os.join_path(libmpg123_src,'synth_neon_float.S'),
-		os.join_path(libmpg123_src,'synth_neon_s32.S'),
-		os.join_path(libmpg123_src,'synth_stereo_neon_float.S'),
-		os.join_path(libmpg123_src,'synth_stereo_neon_s32.S'),
-		os.join_path(libmpg123_src,'dct64_neon.S'),
-		os.join_path(libmpg123_src,'synth_neon.S'),
-		os.join_path(libmpg123_src,'synth_stereo_neon.S'),
-		os.join_path(libmpg123_src,'synth_s32.c'),
-		os.join_path(libmpg123_src,'synth_real.c'),
-		os.join_path(libmpg123_src,'feature.c'),
+		os.join_path(libmpg123_src, 'stringbuf.c'),
+		os.join_path(libmpg123_src, 'icy.c'),
+		os.join_path(libmpg123_src, 'icy2utf8.c'),
+		os.join_path(libmpg123_src, 'ntom.c'),
+		os.join_path(libmpg123_src, 'synth.c'),
+		os.join_path(libmpg123_src, 'synth_8bit.c'),
+		os.join_path(libmpg123_src, 'layer1.c'),
+		os.join_path(libmpg123_src, 'layer2.c'),
+		os.join_path(libmpg123_src, 'layer3.c'),
+		os.join_path(libmpg123_src, 'dct36_neon.S'),
+		os.join_path(libmpg123_src, 'dct64_neon_float.S'),
+		os.join_path(libmpg123_src, 'synth_neon_float.S'),
+		os.join_path(libmpg123_src, 'synth_neon_s32.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_neon_float.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_neon_s32.S'),
+		os.join_path(libmpg123_src, 'dct64_neon.S'),
+		os.join_path(libmpg123_src, 'synth_neon.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_neon.S'),
+		os.join_path(libmpg123_src, 'synth_s32.c'),
+		os.join_path(libmpg123_src, 'synth_real.c'),
+		os.join_path(libmpg123_src, 'feature.c'),
 	]
 	sources['libmpg123']['arm64-v8a']['c'] << [
-		os.join_path(libmpg123_src,'stringbuf.c')
-		os.join_path(libmpg123_src,'icy.c')
-		os.join_path(libmpg123_src,'icy2utf8.c')
-		os.join_path(libmpg123_src,'ntom.c')
-		os.join_path(libmpg123_src,'synth.c')
-		os.join_path(libmpg123_src,'synth_8bit.c')
-		os.join_path(libmpg123_src,'layer1.c')
-		os.join_path(libmpg123_src,'layer2.c')
-		os.join_path(libmpg123_src,'layer3.c')
-		os.join_path(libmpg123_src,'dct36_neon64.S')
-		os.join_path(libmpg123_src,'dct64_neon64_float.S')
-		os.join_path(libmpg123_src,'synth_neon64_float.S')
-		os.join_path(libmpg123_src,'synth_neon64_s32.S')
-		os.join_path(libmpg123_src,'synth_stereo_neon64_float.S')
-		os.join_path(libmpg123_src,'synth_stereo_neon64_s32.S')
-		os.join_path(libmpg123_src,'dct64_neon64.S')
-		os.join_path(libmpg123_src,'synth_neon64.S')
-		os.join_path(libmpg123_src,'synth_stereo_neon64.S')
-		os.join_path(libmpg123_src,'synth_s32.c')
-		os.join_path(libmpg123_src,'synth_real.c')
-		os.join_path(libmpg123_src,'dither.c')
-		os.join_path(libmpg123_src,'getcpuflags_arm.c')
-		os.join_path(libmpg123_src,'check_neon.S')
-		os.join_path(libmpg123_src,'feature.c')
+		os.join_path(libmpg123_src, 'stringbuf.c'),
+		os.join_path(libmpg123_src, 'icy.c'),
+		os.join_path(libmpg123_src, 'icy2utf8.c'),
+		os.join_path(libmpg123_src, 'ntom.c'),
+		os.join_path(libmpg123_src, 'synth.c'),
+		os.join_path(libmpg123_src, 'synth_8bit.c'),
+		os.join_path(libmpg123_src, 'layer1.c'),
+		os.join_path(libmpg123_src, 'layer2.c'),
+		os.join_path(libmpg123_src, 'layer3.c'),
+		os.join_path(libmpg123_src, 'dct36_neon64.S'),
+		os.join_path(libmpg123_src, 'dct64_neon64_float.S'),
+		os.join_path(libmpg123_src, 'synth_neon64_float.S'),
+		os.join_path(libmpg123_src, 'synth_neon64_s32.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_neon64_float.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_neon64_s32.S'),
+		os.join_path(libmpg123_src, 'dct64_neon64.S'),
+		os.join_path(libmpg123_src, 'synth_neon64.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_neon64.S'),
+		os.join_path(libmpg123_src, 'synth_s32.c'),
+		os.join_path(libmpg123_src, 'synth_real.c'),
+		os.join_path(libmpg123_src, 'dither.c'),
+		os.join_path(libmpg123_src, 'getcpuflags_arm.c'),
+		os.join_path(libmpg123_src, 'check_neon.S'),
+		os.join_path(libmpg123_src, 'feature.c'),
 	]
 	sources['libmpg123']['x86']['c'] << [
-		os.join_path(libmpg123_src,'feature.c')
-		os.join_path(libmpg123_src,'icy2utf8.c')
-		os.join_path(libmpg123_src,'icy.c')
-		os.join_path(libmpg123_src,'layer1.c')
-		os.join_path(libmpg123_src,'layer2.c')
-		os.join_path(libmpg123_src,'layer3.c')
-		os.join_path(libmpg123_src,'ntom.c')
-		os.join_path(libmpg123_src,'stringbuf.c')
-		os.join_path(libmpg123_src,'synth_8bit.c')
-		os.join_path(libmpg123_src,'synth.c')
-		os.join_path(libmpg123_src,'synth_real.c')
-		os.join_path(libmpg123_src,'synth_s32.c')
-		os.join_path(libmpg123_src,'dither.c')
+		os.join_path(libmpg123_src, 'feature.c'),
+		os.join_path(libmpg123_src, 'icy2utf8.c'),
+		os.join_path(libmpg123_src, 'icy.c'),
+		os.join_path(libmpg123_src, 'layer1.c'),
+		os.join_path(libmpg123_src, 'layer2.c'),
+		os.join_path(libmpg123_src, 'layer3.c'),
+		os.join_path(libmpg123_src, 'ntom.c'),
+		os.join_path(libmpg123_src, 'stringbuf.c'),
+		os.join_path(libmpg123_src, 'synth_8bit.c'),
+		os.join_path(libmpg123_src, 'synth.c'),
+		os.join_path(libmpg123_src, 'synth_real.c'),
+		os.join_path(libmpg123_src, 'synth_s32.c'),
+		os.join_path(libmpg123_src, 'dither.c'),
 	]
 	sources['libmpg123']['x86_64']['c'] << [
-		os.join_path(libmpg123_src,'stringbuf.c')
-		os.join_path(libmpg123_src,'icy.c')
-		//os.join_path(libmpg123_src,'icy.h')
-		os.join_path(libmpg123_src,'icy2utf8.c')
-		//os.join_path(libmpg123_src,'icy2utf8.h')
-		os.join_path(libmpg123_src,'ntom.c')
-		os.join_path(libmpg123_src,'synth.c')
-		//os.join_path(libmpg123_src,'synth.h')
-		os.join_path(libmpg123_src,'synth_8bit.c')
-		//os.join_path(libmpg123_src,'synth_8bit.h')
-		os.join_path(libmpg123_src,'layer1.c')
-		os.join_path(libmpg123_src,'layer2.c')
-		os.join_path(libmpg123_src,'layer3.c')
-		os.join_path(libmpg123_src,'synth_s32.c')
-		os.join_path(libmpg123_src,'synth_real.c')
-		os.join_path(libmpg123_src,'dct36_x86_64.S')
-		os.join_path(libmpg123_src,'dct64_x86_64_float.S')
-		os.join_path(libmpg123_src,'synth_x86_64_float.S')
-		os.join_path(libmpg123_src,'synth_x86_64_s32.S')
-		os.join_path(libmpg123_src,'synth_stereo_x86_64_float.S')
-		os.join_path(libmpg123_src,'synth_stereo_x86_64_s32.S')
-		os.join_path(libmpg123_src,'synth_x86_64.S')
-		os.join_path(libmpg123_src,'dct64_x86_64.S')
-		os.join_path(libmpg123_src,'synth_stereo_x86_64.S')
-		os.join_path(libmpg123_src,'dither.c')
+		os.join_path(libmpg123_src, 'stringbuf.c'),
+		os.join_path(libmpg123_src, 'icy.c')
+		// os.join_path(libmpg123_src,'icy.h')
+		os.join_path(libmpg123_src, 'icy2utf8.c')
+		// os.join_path(libmpg123_src,'icy2utf8.h')
+		os.join_path(libmpg123_src, 'ntom.c'),
+		os.join_path(libmpg123_src, 'synth.c')
+		// os.join_path(libmpg123_src,'synth.h')
+		os.join_path(libmpg123_src, 'synth_8bit.c')
+		// os.join_path(libmpg123_src,'synth_8bit.h')
+		os.join_path(libmpg123_src, 'layer1.c'),
+		os.join_path(libmpg123_src, 'layer2.c'),
+		os.join_path(libmpg123_src, 'layer3.c'),
+		os.join_path(libmpg123_src, 'synth_s32.c'),
+		os.join_path(libmpg123_src, 'synth_real.c'),
+		os.join_path(libmpg123_src, 'dct36_x86_64.S'),
+		os.join_path(libmpg123_src, 'dct64_x86_64_float.S'),
+		os.join_path(libmpg123_src, 'synth_x86_64_float.S'),
+		os.join_path(libmpg123_src, 'synth_x86_64_s32.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_x86_64_float.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_x86_64_s32.S'),
+		os.join_path(libmpg123_src, 'synth_x86_64.S'),
+		os.join_path(libmpg123_src, 'dct64_x86_64.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_x86_64.S'),
+		os.join_path(libmpg123_src, 'dither.c')
 		// os.join_path(libmpg123_src,'dither.h')
-		os.join_path(libmpg123_src,'getcpuflags_x86_64.S')
-		os.join_path(libmpg123_src,'dct36_avx.S')
-		os.join_path(libmpg123_src,'dct64_avx_float.S')
-		os.join_path(libmpg123_src,'synth_stereo_avx_float.S')
-		os.join_path(libmpg123_src,'synth_stereo_avx_s32.S')
-		os.join_path(libmpg123_src,'dct64_avx.S')
-		os.join_path(libmpg123_src,'synth_stereo_avx.S')
-		os.join_path(libmpg123_src,'feature.c')
+		os.join_path(libmpg123_src, 'getcpuflags_x86_64.S'),
+		os.join_path(libmpg123_src, 'dct36_avx.S'),
+		os.join_path(libmpg123_src, 'dct64_avx_float.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_avx_float.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_avx_s32.S'),
+		os.join_path(libmpg123_src, 'dct64_avx.S'),
+		os.join_path(libmpg123_src, 'synth_stereo_avx.S'),
+		os.join_path(libmpg123_src, 'feature.c'),
 	]
 
 	for arch in supported_archs {
 		sources['libmpg123'][arch]['c'] << [
-			os.join_path(libmpg123_src,'parse.c')
-			os.join_path(libmpg123_src,'frame.c')
-			os.join_path(libmpg123_src,'format.c')
-			os.join_path(libmpg123_src,'dct64.c')
-			os.join_path(libmpg123_src,'equalizer.c')
-			os.join_path(libmpg123_src,'id3.c')
-			os.join_path(libmpg123_src,'optimize.c')
-			os.join_path(libmpg123_src,'readers.c')
-			os.join_path(libmpg123_src,'tabinit.c')
-			os.join_path(libmpg123_src,'libmpg123.c')
-			os.join_path(libmpg123_src,'index.c')
-			os.join_path(libmpg123_compat_src, 'compat_str.c')
-			os.join_path(libmpg123_compat_src, 'compat.c')
+			os.join_path(libmpg123_src, 'parse.c'),
+			os.join_path(libmpg123_src, 'frame.c'),
+			os.join_path(libmpg123_src, 'format.c'),
+			os.join_path(libmpg123_src, 'dct64.c'),
+			os.join_path(libmpg123_src, 'equalizer.c'),
+			os.join_path(libmpg123_src, 'id3.c'),
+			os.join_path(libmpg123_src, 'optimize.c'),
+			os.join_path(libmpg123_src, 'readers.c'),
+			os.join_path(libmpg123_src, 'tabinit.c'),
+			os.join_path(libmpg123_src, 'libmpg123.c'),
+			os.join_path(libmpg123_src, 'index.c'),
+			os.join_path(libmpg123_compat_src, 'compat_str.c'),
+			os.join_path(libmpg123_compat_src, 'compat.c'),
 		]
 	}
 
 	// libogg
 	for arch in supported_archs {
-		includes['libogg'][arch] << os.join_path(ogg_root,'include')
-		includes['libogg'][arch] << os.join_path(ogg_root,'android')
-		//includes['libogg'][arch] << os.join_path(vorbis_root)
+		includes['libogg'][arch] << os.join_path(ogg_root, 'include')
+		includes['libogg'][arch] << os.join_path(ogg_root, 'android')
+		// includes['libogg'][arch] << os.join_path(vorbis_root)
 	}
 
 	for arch in supported_archs {
 		sources['libogg'][arch]['c'] << [
-			os.join_path(ogg_root,'src/framing.c')
-			os.join_path(ogg_root,'src/bitwise.c')
+			os.join_path(ogg_root, 'src/framing.c'),
+			os.join_path(ogg_root, 'src/bitwise.c'),
 		]
 	}
 
 	// libvorbisidec
 	for arch in supported_archs {
-		includes['libvorbisidec'][arch] << os.join_path(ogg_root,'include')
-		includes['libvorbisidec'][arch] << os.join_path(ogg_root,'android')
+		includes['libvorbisidec'][arch] << os.join_path(ogg_root, 'include')
+		includes['libvorbisidec'][arch] << os.join_path(ogg_root, 'android')
 		includes['libvorbisidec'][arch] << os.join_path(vorbis_root)
 	}
 
@@ -1806,68 +2311,69 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 
 	for arch in supported_archs {
 		sources['libvorbisidec'][arch]['c'] << [
-			os.join_path(vorbis_root,'block.c')
-			os.join_path(vorbis_root,'synthesis.c')
-			os.join_path(vorbis_root,'info.c')
-			os.join_path(vorbis_root,'res012.c')
-			os.join_path(vorbis_root,'mapping0.c')
-			os.join_path(vorbis_root,'registry.c')
-			os.join_path(vorbis_root,'codebook.c')
+			os.join_path(vorbis_root, 'block.c'),
+			os.join_path(vorbis_root, 'synthesis.c'),
+			os.join_path(vorbis_root, 'info.c'),
+			os.join_path(vorbis_root, 'res012.c'),
+			os.join_path(vorbis_root, 'mapping0.c'),
+			os.join_path(vorbis_root, 'registry.c'),
+			os.join_path(vorbis_root, 'codebook.c'),
 		]
 		sources['libvorbisidec'][arch]['c.arm'] << [
-			os.join_path(vorbis_root,'mdct.c')
-			os.join_path(vorbis_root,'window.c')
-			os.join_path(vorbis_root,'floor1.c')
-			os.join_path(vorbis_root,'floor0.c')
-			os.join_path(vorbis_root,'vorbisfile.c')
-			os.join_path(vorbis_root,'sharedbook.c')
+			os.join_path(vorbis_root, 'mdct.c'),
+			os.join_path(vorbis_root, 'window.c'),
+			os.join_path(vorbis_root, 'floor1.c'),
+			os.join_path(vorbis_root, 'floor0.c'),
+			os.join_path(vorbis_root, 'vorbisfile.c'),
+			os.join_path(vorbis_root, 'sharedbook.c'),
 		]
 		sources['libvorbisidec'][arch]['c'] << [
-			os.join_path(ogg_root,'src/framing.c')
-			os.join_path(ogg_root,'src/bitwise.c')
+			os.join_path(ogg_root, 'src/framing.c'),
+			os.join_path(ogg_root, 'src/bitwise.c'),
 		]
 	}
 
 	// libmodplug
 	for arch in supported_archs {
-		includes['libmodplug'][arch] << os.join_path(modplug_root,'src')
-		includes['libmodplug'][arch] << os.join_path(modplug_root,'src','libmodplug')
+		includes['libmodplug'][arch] << os.join_path(modplug_root, 'src')
+		includes['libmodplug'][arch] << os.join_path(modplug_root, 'src', 'libmodplug')
 		sources['libmodplug'][arch]['cpp'] << [
-			os.join_path(modplug_root,'src/fastmix.cpp')
-			os.join_path(modplug_root,'src/load_669.cpp')
-			os.join_path(modplug_root,'src/load_abc.cpp')
-			os.join_path(modplug_root,'src/load_amf.cpp')
-			os.join_path(modplug_root,'src/load_ams.cpp')
-			os.join_path(modplug_root,'src/load_dbm.cpp')
-			os.join_path(modplug_root,'src/load_dmf.cpp')
-			os.join_path(modplug_root,'src/load_dsm.cpp')
-			os.join_path(modplug_root,'src/load_far.cpp')
-			os.join_path(modplug_root,'src/load_it.cpp')
-			os.join_path(modplug_root,'src/load_j2b.cpp')
-			os.join_path(modplug_root,'src/load_mdl.cpp')
-			os.join_path(modplug_root,'src/load_med.cpp')
-			os.join_path(modplug_root,'src/load_mid.cpp')
-			os.join_path(modplug_root,'src/load_mod.cpp')
-			os.join_path(modplug_root,'src/load_mt2.cpp')
-			os.join_path(modplug_root,'src/load_mtm.cpp')
-			os.join_path(modplug_root,'src/load_okt.cpp')
-			os.join_path(modplug_root,'src/load_pat.cpp')
-			os.join_path(modplug_root,'src/load_psm.cpp')
-			os.join_path(modplug_root,'src/load_ptm.cpp')
-			os.join_path(modplug_root,'src/load_s3m.cpp')
-			os.join_path(modplug_root,'src/load_stm.cpp')
-			os.join_path(modplug_root,'src/load_ult.cpp')
-			os.join_path(modplug_root,'src/load_umx.cpp')
-			os.join_path(modplug_root,'src/load_wav.cpp')
-			os.join_path(modplug_root,'src/load_xm.cpp')
-			os.join_path(modplug_root,'src/mmcmp.cpp')
-			os.join_path(modplug_root,'src/modplug.cpp')
-			os.join_path(modplug_root,'src/snd_dsp.cpp')
-			os.join_path(modplug_root,'src/snd_flt.cpp')
-			os.join_path(modplug_root,'src/snd_fx.cpp')
-			os.join_path(modplug_root,'src/sndfile.cpp')
-			os.join_path(modplug_root,'src/sndmix.cpp')
+			os.join_path(modplug_root, 'src/fastmix.cpp'),
+			os.join_path(modplug_root, 'src/load_669.cpp'),
+			os.join_path(modplug_root, 'src/load_abc.cpp'),
+			os.join_path(modplug_root, 'src/load_amf.cpp'),
+			os.join_path(modplug_root, 'src/load_ams.cpp'),
+			os.join_path(modplug_root, 'src/load_dbm.cpp'),
+			os.join_path(modplug_root, 'src/load_dmf.cpp'),
+			os.join_path(modplug_root, 'src/load_dsm.cpp'),
+			os.join_path(modplug_root, 'src/load_far.cpp'),
+			os.join_path(modplug_root, 'src/load_it.cpp'),
+			os.join_path(modplug_root, 'src/load_j2b.cpp'),
+			os.join_path(modplug_root, 'src/load_mdl.cpp'),
+			os.join_path(modplug_root, 'src/load_med.cpp'),
+			os.join_path(modplug_root, 'src/load_mid.cpp'),
+			os.join_path(modplug_root, 'src/load_mod.cpp'),
+			os.join_path(modplug_root, 'src/load_mt2.cpp'),
+			os.join_path(modplug_root, 'src/load_mtm.cpp'),
+			os.join_path(modplug_root, 'src/load_okt.cpp'),
+			os.join_path(modplug_root, 'src/load_pat.cpp'),
+			os.join_path(modplug_root, 'src/load_psm.cpp'),
+			os.join_path(modplug_root, 'src/load_ptm.cpp'),
+			os.join_path(modplug_root, 'src/load_s3m.cpp'),
+			os.join_path(modplug_root, 'src/load_stm.cpp'),
+			os.join_path(modplug_root, 'src/load_ult.cpp'),
+			os.join_path(modplug_root, 'src/load_umx.cpp'),
+			os.join_path(modplug_root, 'src/load_wav.cpp'),
+			os.join_path(modplug_root, 'src/load_xm.cpp'),
+			os.join_path(modplug_root, 'src/mmcmp.cpp'),
+			os.join_path(modplug_root, 'src/modplug.cpp'),
+			os.join_path(modplug_root, 'src/snd_dsp.cpp'),
+			os.join_path(modplug_root, 'src/snd_flt.cpp'),
+			os.join_path(modplug_root, 'src/snd_fx.cpp'),
+			os.join_path(modplug_root, 'src/sndfile.cpp'),
+			os.join_path(modplug_root, 'src/sndmix.cpp'),
 		]
+		c_flags['libmodplug'][arch] << '-Wno-deprecated-register -Wunused-function'.split(' ') // For at least v2.0.4
 		c_flags['libmodplug'][arch] << '-DHAVE_SETENV -DHAVE_SINF'.split(' ')
 	}
 
@@ -1875,15 +2381,15 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 	for arch in supported_archs {
 		includes['libtimidity'][arch] << timidity_root
 		sources['libtimidity'][arch]['c'] << [
-			os.join_path(timidity_root,'common.c')
-			os.join_path(timidity_root,'instrum.c')
-			os.join_path(timidity_root,'mix.c')
-			os.join_path(timidity_root,'output.c')
-			os.join_path(timidity_root,'playmidi.c')
-			os.join_path(timidity_root,'readmidi.c')
-			os.join_path(timidity_root,'resample.c')
-			os.join_path(timidity_root,'tables.c')
-			os.join_path(timidity_root,'timidity.c')
+			os.join_path(timidity_root, 'common.c'),
+			os.join_path(timidity_root, 'instrum.c'),
+			os.join_path(timidity_root, 'mix.c'),
+			os.join_path(timidity_root, 'output.c'),
+			os.join_path(timidity_root, 'playmidi.c'),
+			os.join_path(timidity_root, 'readmidi.c'),
+			os.join_path(timidity_root, 'resample.c'),
+			os.join_path(timidity_root, 'tables.c'),
+			os.join_path(timidity_root, 'timidity.c'),
 		]
 	}
 
@@ -1911,13 +2417,131 @@ fn sdl_mixer_environment(config SDLMixerConfig) !SDLMixerEnv {
 		}
 	}
 
-	//println(sources)
 	return SDLMixerEnv{
 		config: config
 		version: version
 		includes: includes
 		sources: sources
 		c_flags: c_flags
+	}
+}
+
+fn sdl_image_environment(config SDLImageConfig) !SDLImageEnv {
+	// err_sig := @MOD + '.' + @FN
+	root := os.real_path(config.root)
+
+	supported_archs := unsafe { ndk.supported_archs }
+	// Detect version - TODO FIXME
+	version := os.file_name(config.root).all_after('SDL2_image-')
+
+	mut includes := map[string]map[string][]string{}
+	mut c_flags := map[string]map[string][]string{}
+	mut ld_flags := map[string]map[string][]string{}
+	mut sources := map[string]map[string]map[string][]string{}
+
+	// jpg_root := os.join_path(root, 'external','jpeg-9b')
+	png_root := os.join_path(root, 'external', 'libpng-1.6.37')
+	// webp_root := os.join_path(root, 'external','libwebp-1.0.2')
+
+	// Headers / defines
+	for arch in supported_archs {
+		includes['libSDL2_image'][arch] << root
+	}
+
+	// Sources
+	for arch in supported_archs {
+		sources['libSDL2_image'][arch]['c'] << [
+			os.join_path(root, 'IMG.c'),
+			os.join_path(root, 'IMG_bmp.c'),
+			os.join_path(root, 'IMG_gif.c'),
+			os.join_path(root, 'IMG_jpg.c'),
+			os.join_path(root, 'IMG_lbm.c'),
+			os.join_path(root, 'IMG_pcx.c'),
+			os.join_path(root, 'IMG_png.c'),
+			os.join_path(root, 'IMG_pnm.c'),
+			os.join_path(root, 'IMG_svg.c'),
+			os.join_path(root, 'IMG_tga.c'),
+			os.join_path(root, 'IMG_tif.c'),
+			os.join_path(root, 'IMG_webp.c'),
+			os.join_path(root, 'IMG_WIC.c'),
+			os.join_path(root, 'IMG_xcf.c'),
+			os.join_path(root, 'IMG_xv.c'),
+			os.join_path(root, 'IMG_xxx.c'),
+		]
+
+		sources['libSDL2_image'][arch]['c.arm'] << [
+			os.join_path(root, 'IMG_xpm.c'),
+		]
+
+		c_flags['libSDL2_image'][arch] << '-Wno-unused-variable -Wno-unused-function'.split(' ')
+		c_flags['libSDL2_image'][arch] << '-DLOAD_BMP -DLOAD_GIF -DLOAD_LBM -DLOAD_PCX -DLOAD_PNM -DLOAD_SVG -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV'.split(' ')
+	}
+
+	// libpng
+	// Headers / defines
+	for arch in supported_archs {
+		includes['libpng'][arch] << os.join_path(png_root)
+		sources['libpng'][arch]['c'] << [
+			os.join_path(png_root, 'png.c'),
+			os.join_path(png_root, 'pngerror.c'),
+			os.join_path(png_root, 'pngget.c'),
+			os.join_path(png_root, 'pngmem.c'),
+			os.join_path(png_root, 'pngpread.c'),
+			os.join_path(png_root, 'pngread.c'),
+			os.join_path(png_root, 'pngrio.c'),
+			os.join_path(png_root, 'pngrtran.c'),
+			os.join_path(png_root, 'pngrutil.c'),
+			os.join_path(png_root, 'pngset.c'),
+			os.join_path(png_root, 'pngtrans.c'),
+			os.join_path(png_root, 'pngwio.c'),
+			os.join_path(png_root, 'pngwrite.c'),
+			os.join_path(png_root, 'pngwtran.c'),
+			os.join_path(png_root, 'pngwutil.c'),
+		]
+	}
+
+	// neon
+	sources['libpng']['armeabi-v7a']['c.arm'] << [
+		os.join_path(png_root, 'arm', 'arm_init.c'),
+		os.join_path(png_root, 'arm', 'filter_neon.S'),
+		os.join_path(png_root, 'arm', 'filter_neon_intrinsics.c'),
+		os.join_path(png_root, 'arm', 'palette_neon_intrinsics.c'),
+	]
+	// neon64
+	sources['libpng']['arm64-v8a']['c.arm'] << [
+		os.join_path(png_root, 'arm', 'arm_init.c'),
+		os.join_path(png_root, 'arm', 'filter_neon.S'),
+		os.join_path(png_root, 'arm', 'filter_neon_intrinsics.c'),
+		os.join_path(png_root, 'arm', 'palette_neon_intrinsics.c'),
+	]
+
+	for arch in supported_archs {
+		/*
+		if config.features.jpg {
+			includes['libSDL2_image'][arch] << includes['libSDL2_image'][arch].clone()
+			c_flags['libSDL2_image'][arch] << c_flags['libSDL2_image'][arch].clone()
+		}*/
+		if config.features.png {
+			includes['libSDL2_image'][arch] << includes['libpng'][arch].clone()
+			c_flags['libSDL2_image'][arch] << c_flags['libpng'][arch].clone()
+			c_flags['libSDL2_image'][arch] << '-DLOAD_PNG'
+			ld_flags['libSDL2_image'][arch] << '-lz'
+		}
+		/*
+		if config.features.webp {
+			includes['libSDL2_image'][arch] << includes['libSDL2_image'][arch].clone()
+			c_flags['libSDL2_image'][arch] << c_flags['libSDL2_image'][arch].clone()
+		}*/
+	}
+
+	// println(sources)
+	return SDLImageEnv{
+		config: config
+		version: version
+		includes: includes
+		sources: sources
+		c_flags: c_flags
+		ld_flags: ld_flags
 	}
 }
 
