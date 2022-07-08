@@ -962,7 +962,7 @@ fn compile_sdl2_mixer(mix_opt SDLMixerCompileOptions) ! {
 				//}
 
 				if arch == 'armeabi-v7a' {
-					m_cflags << ['-thumb']
+					m_cflags << ['-mthumb']
 				}
 
 				build_cmd := [
@@ -1359,7 +1359,7 @@ fn compile_sdl2_image(image_opt SDLImageCompileOptions) ! {
 				//}
 
 				if arch == 'armeabi-v7a' {
-					m_cflags << ['-thumb']
+					m_cflags << ['-mthumb']
 				}
 
 				build_cmd := [
@@ -1758,7 +1758,7 @@ fn compile_sdl2_ttf(ttf_opt SDLTTFCompileOptions) ! {
 				//}
 
 				if arch == 'armeabi-v7a' {
-					m_cflags << ['-thumb']
+					m_cflags << ['-mthumb']
 				}
 
 				build_cmd := [
