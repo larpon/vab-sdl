@@ -80,13 +80,13 @@ pub fn run_jobs(jobs []ShellJob, parallel bool, verbosity int) ! {
 
 fn product_cache_path() string {
 	cache_path := os.cache_dir()
-	return os.join_path(cache_path, 'v', 'android','sdl', 'products')
+	return os.join_path(cache_path, 'v', 'android', 'sdl', 'products')
 }
 
 pub struct AndroidBuildOptions {
 pub mut:
-	version string = '0.0.0' // version modifier of what's being built
-	verbosity int // level of verbosity
+	version   string = '0.0.0' // version modifier of what's being built
+	verbosity int    // level of verbosity
 	parallel  bool = true
 	cache     bool = true
 	// env
@@ -114,7 +114,7 @@ fn (abo &AndroidBuildOptions) make_product(path string) ! {
 	id := os.file_name(path).all_after('lib').all_before('.')
 
 	mut dst_path := ''
-	if path.contains(os.path_separator+'lib'+os.path_separator) {
+	if path.contains(os.path_separator + 'lib' + os.path_separator) {
 		dst_path = abo.path_product_lib(id)
 	}
 
@@ -128,20 +128,16 @@ fn (abo &AndroidBuildOptions) make_product(path string) ! {
 		}
 	}
 
-	dst := os.join_path(dst_path,os.file_name(path))
+	dst := os.join_path(dst_path, os.file_name(path))
 	if os.exists(dst) {
-		os.rm(dst) or {
-			return error('$err_sig: could not delete existsing product "$dst"')
-		}
+		os.rm(dst) or { return error('$err_sig: could not delete existsing product "$dst"') }
 	}
-	os.cp(path, dst) or {
-		return error('$err_sig: could not copy product "$path" to "$dst"')
-	}
+	os.cp(path, dst) or { return error('$err_sig: could not copy product "$path" to "$dst"') }
 }
 
 fn (abo &AndroidBuildOptions) path_product_lib(id string) string {
 	// err_sig := @FN
-	dst_path := os.join_path(abo.path_product_libs(id),abo.arch)
+	dst_path := os.join_path(abo.path_product_libs(id), abo.arch)
 	return dst_path
 }
 
@@ -149,7 +145,7 @@ fn (abo &AndroidBuildOptions) path_product_libs(id string) string {
 	// err_sig := @FN
 	products_path := product_cache_path()
 	// NOTE Don't use abo.version in this scheme, since versions aren't known to other build nodes
-	dst_path := os.join_path(products_path,id,'lib')
+	dst_path := os.join_path(products_path, id, 'lib')
 	return dst_path
 }
 
@@ -162,7 +158,7 @@ fn (abo AndroidBuildOptions) path_base() string {
 }
 
 pub fn (abo AndroidBuildOptions) path_lib(id string) string {
-	return os.join_path(abo.path_libs(id),abo.arch)
+	return os.join_path(abo.path_libs(id), abo.arch)
 }
 
 pub fn (abo AndroidBuildOptions) path_libs(id string) string {
@@ -266,7 +262,7 @@ pub fn (an AndroidNode) fetch_data() !AndroidNodeData {
 	return error('$err_sig: $an.id has no data attached')
 }
 
-pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string)! {
+pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string) ! {
 	err_sig := @FN
 	node := &an.Node
 	if 'exports' in node.items.keys() {
@@ -282,7 +278,7 @@ pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string)
 	}
 }
 
-pub fn (mut an AndroidNode) add_link_lib(lib string, kind LibKind, arch string, tags []string)! {
+pub fn (mut an AndroidNode) add_link_lib(lib string, kind LibKind, arch string, tags []string) ! {
 	mut ll_tags := tags.clone()
 	match kind {
 		.dynamic {
@@ -452,7 +448,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 	bo := abo
 
 	// Setup work directories
-	out_dir := os.join_path(bo.path_objects(node.id),arch)
+	out_dir := os.join_path(bo.path_objects(node.id), arch)
 	if !bo.cache {
 		os.rmdir_all(out_dir) or {}
 	}
@@ -613,7 +609,7 @@ fn (an &AndroidNode) build_lib_static() ! {
 
 	// collect .o files from child nodes
 	if o_build := node.find_nearest(id: lib, tags: ['o', 'build', '$arch']) {
-		o_out_dir := os.join_path(bo.path_objects(node.id),arch)
+		o_out_dir := os.join_path(bo.path_objects(node.id), arch)
 		if sources := o_build.items['sources'] {
 			for source_node in sources {
 				o_file_name := os.file_name(source_node.id).all_before_last('.') + '.o'
@@ -701,7 +697,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 
 	// collect .o files from child nodes
 	if o_build := node.find_nearest(id: lib, tags: ['o', 'build', '$arch']) {
-		o_out_dir := os.join_path(bo.path_objects(node.id),arch)
+		o_out_dir := os.join_path(bo.path_objects(node.id), arch)
 		if sources := o_build.items['sources'] {
 			for source_node in sources {
 				o_file_name := os.file_name(source_node.id).all_before_last('.') + '.o'

@@ -2,16 +2,17 @@ module main
 
 import os
 import flag
+import vab.cli
 import vab.android
 import vab.android.ndk
-import vab.android.sdk
+// import vab.android.sdk
 
 const (
 	exe_version            = version()
-	exe_pretty_name        = os.file_name(@FILE)
 	exe_name               = os.file_name(os.executable())
+	exe_short_name         = os.file_name(os.executable()).replace('.exe', '')
 	exe_dir                = os.dir(os.real_path(os.executable()))
-	exe_description        = '$exe_pretty_name
+	exe_description        = '$exe_short_name
 compile SDL for Android.
 '
 	exe_git_hash           = ab_commit_hash()
@@ -22,42 +23,25 @@ compile SDL for Android.
 		'2.0.20', '2.0.22']
 )
 
-struct Options {
-	// Internals
-	verbosity int
-	work_dir  string = work_directory
-	//
-	parallel bool = true // Run, what can be run, in parallel
-	cache    bool // NOTE flipped when parsed by args_to_options
-	// Build specifics
-	c_flags   []string // flags passed to the C compiler(s)
-	v_flags   []string // flags passed to the V compiler
-	lib_name  string = 'main'
-	show_help bool
-mut:
-	additional_args []string
-	//
-	input  string
-	output string
-	// Build and packaging
-	is_prod bool
-	// Build specifics
-	archs           []string = android.default_archs.clone()
-	api_level       string
-	ndk_version     string
-	min_sdk_version int = android.default_min_sdk_version
-}
-
 fn main() {
-	mut opt := Options{}
+	// Collect user flags in an extended manner.
+	// Start with defaults -> overwrite by VAB_FLAGS -> overwrite by commandline flags -> extend by .vab file entries.
+	mut opt := cli.Options{}
 	mut fp := &flag.FlagParser(0)
 
-	opt, fp = args_to_options(os.args, opt) or {
-		eprintln('Error while parsing `os.args`: $err')
+	opt = cli.options_from_env(opt) or {
+		eprintln('Error while parsing `VAB_FLAGS`: $err')
+		eprintln('Use `$exe_short_name -h` to see all flags')
 		exit(1)
 	}
 
-	if opt.show_help {
+	opt, fp = cli.args_to_options(os.args, opt) or {
+		eprintln('Error while parsing `os.args`: $err')
+		eprintln('Use `$exe_short_name -h` to see all flags')
+		exit(1)
+	}
+
+	if opt.dump_usage {
 		println(fp.usage())
 		exit(0)
 	}
@@ -65,27 +49,117 @@ fn main() {
 	// All flags after this requires an input argument
 	if fp.args.len == 0 {
 		eprintln('No arguments given')
-		eprintln('Use `$exe_pretty_name -h` to see all flags')
+		eprintln('Use `vab -h` to see all flags')
 		exit(1)
 	}
 
-	input := fp.args[fp.args.len - 1]
-	/*
-	input_ext := os.file_ext(input)
-	if !(os.is_dir(input) || input_ext in accepted_input_files) {
-		eprintln('$exe_name requires input to be a V file, an APK, AAB or a directory containing V sources')
+	// Call the doctor at this point
+	if opt.additional_args.len > 0 {
+		if opt.additional_args[0] == 'doctor' {
+			// Validate environment
+			cli.check_essentials(false)
+			opt.resolve(false)
+			cli.doctor(opt)
+			exit(0)
+		}
+	}
+
+	// Validate environment
+	cli.check_essentials(true)
+	opt.resolve(true)
+
+	input := fp.args.last()
+	cli.validate_input(input) or {
+		eprintln('$cli.exe_short_name: $err')
 		exit(1)
-	}*/
+	}
 	opt.input = input
 
-	resolve_options(mut opt, true)
+	opt.resolve_output()
 
-	build_archs := opt.archs.clone()
-	mut libs_extra := []string{}
+	opt.extend_from_dot_vab()
 
-	// v_sdl_app := opt.input // os.real_path(os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples','basic_image'))
-	// lib_name := 'main' // TODO make an option
+	// Validate environment after options and input has been resolved
+	opt.validate_env()
 
+	opt.ensure_launch_fields()
+
+	// Keystore file
+	keystore := opt.resolve_keystore()!
+
+	///////////////////////////////////////////////
+	// TODO
+	opt.lib_name = 'main'
+	opt.activity_name = 'VSDLActivity'
+	opt.package_id = 'io.v.android.ex'
+
+	mut libs_extra := compile_sdl_and_v(opt) or { panic(err) }
+	//
+	//////////////////////////////////////////////
+
+	ado := opt.as_android_deploy_options() or {
+		eprintln('Could not create deploy options.\n$err')
+		exit(1)
+	}
+	deploy_opt := android.DeployOptions{
+		...ado
+		keystore: keystore
+	}
+
+	if opt.verbosity > 1 {
+		println('Output will be signed with keystore at "$deploy_opt.keystore.path"')
+	}
+
+	input_ext := os.file_ext(opt.input)
+
+	// Early deployment
+	if input_ext in ['.apk', '.aab'] {
+		if deploy_opt.device_id != '' {
+			deploy(deploy_opt)
+			exit(0)
+		}
+	}
+
+	// aco := opt.as_android_compile_options()
+	// comp_opt := android.CompileOptions{
+	// 	...aco
+	// 	cache_key: if os.is_dir(input) || input_ext == '.v' { opt.input } else { '' }
+	// }
+	// android.compile(comp_opt) or {
+	// 	eprintln('$cli.exe_short_name compiling didn\'t succeed.\n$err')
+	// 	exit(1)
+	// }
+
+	apo := opt.as_android_package_options()
+	pck_opt := android.PackageOptions{
+		...apo
+		assets_extra: [
+			os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
+		] // base_abo.assets_extra
+		libs_extra: libs_extra // base_abo.libs_extra
+		// output_file: '/tmp/t.apk' // TODO base_abo.output
+		keystore: keystore
+		base_files: os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
+		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path
+	}
+	android.package(pck_opt) or {
+		eprintln("Packaging didn't succeed.\n$err")
+		exit(1)
+	}
+
+	if deploy_opt.device_id != '' {
+		deploy(deploy_opt)
+	} else {
+		if opt.verbosity > 0 {
+			println('Generated ${os.real_path(opt.output)}')
+			println('Use `$cli.exe_short_name --device <id> ${os.real_path(opt.output)}` to deploy package')
+		}
+	}
+}
+
+fn compile_sdl_and_v(opt cli.Options) ![]string {
+	mut collect_libs := []string{}
+	// Dump meta data from V
 	mut v_flags := opt.v_flags.clone()
 
 	if opt.verbosity > 0 {
@@ -103,7 +177,7 @@ fn main() {
 		input: opt.input
 	}
 
-	v_meta_dump := android.v_dump_meta(v_meta_opt) or { panic(err) }
+	v_meta_dump := android.v_dump_meta(v_meta_opt) or { return error(@FN + ': $err') }
 	imported_modules := v_meta_dump.imports
 	if 'sdl' !in imported_modules {
 		eprintln('Error: v project "$opt.input" does not import `sdl`')
@@ -122,12 +196,10 @@ fn main() {
 	sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
 	sdl2_version := os.file_name(sdl2_home).all_after('SDL2-') // TODO FIXME Detect version in V code
 
-	mut collect_libs := []string{}
-
 	os.rmdir_all(product_cache_path()) or {}
 
 	apis := ndk.available_apis_by_arch(opt.ndk_version)
-	for arch in build_archs {
+	for arch in opt.archs {
 		mut sdl2_configs := []SDL2ConfigType{}
 
 		mut sdl_build := &Node{
@@ -149,7 +221,7 @@ fn main() {
 			abo: sdl2_abo
 			root: sdl2_home
 		}
-		mut libsdl2 := libsdl2_node(sdl2_config) or { panic(err) }
+		mut libsdl2 := libsdl2_node(sdl2_config) or { return error(@FN + ': $err') }
 		sdl2_configs << sdl2_config
 
 		if 'sdl.image' in imported_modules {
@@ -167,7 +239,9 @@ fn main() {
 				root: sdl2_image_home
 			}
 			sdl2_configs << sdl2_image_config
-			libsdl2_image := libsdl2_image_node(sdl2_image_config) or { panic(err) }
+			libsdl2_image := libsdl2_image_node(sdl2_image_config) or {
+				return error(@FN + ': $err')
+			}
 
 			libsdl2.add('tasks', libsdl2_image)
 		}
@@ -188,7 +262,9 @@ fn main() {
 				root: sdl2_mixer_home
 			}
 			sdl2_configs << sdl2_mixer_config
-			libsdl2_mixer := libsdl2_mixer_node(sdl2_mixer_config) or { panic(err) }
+			libsdl2_mixer := libsdl2_mixer_node(sdl2_mixer_config) or {
+				return error(@FN + ': $err')
+			}
 
 			libsdl2.add('tasks', libsdl2_mixer)
 		}
@@ -199,7 +275,7 @@ fn main() {
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
 				version: sdl2_ttf_version
-				work_dir: os.join_path(base_abo.work_dir,'$sdl2_ttf_version')
+				work_dir: os.join_path(base_abo.work_dir, '$sdl2_ttf_version')
 			}
 			collect_libs << abo.path_product_libs('SDL2_ttf')
 
@@ -208,7 +284,7 @@ fn main() {
 				root: sdl2_ttf_home
 			}
 			sdl2_configs << sdl2_ttf_config
-			libsdl2_ttf := libsdl2_ttf_node(sdl2_ttf_config) or { panic(err) }
+			libsdl2_ttf := libsdl2_ttf_node(sdl2_ttf_config) or { return error(@FN + ': $err') }
 
 			libsdl2.add('tasks', libsdl2_ttf)
 		}
@@ -230,195 +306,15 @@ fn main() {
 				lib_name: opt.lib_name
 			}
 		}
-		mut libv := libv_node(v_config) or { panic(err) }
+		mut libv := libv_node(v_config) or { return error(@FN + ': $err') }
 
 		collect_libs << v_config.abo.path_product_libs(opt.lib_name)
 		v_build.add('dependencies', sdl_build)
 		v_build.add('tasks', libv)
 
-		v_build.build() or { panic(err) }
+		v_build.build() or { return error(@FN + ': $err') }
 	}
-
-	for path in collect_libs {
-		libs_extra << path
-	}
-
-	// TODO Keystore file
-	mut keystore := android.Keystore{
-		path: ''
-	}
-	if !os.is_file(keystore.path) {
-		if keystore.path != '' {
-			eprintln('Keystore "$keystore.path" is not a valid file')
-			eprintln('Notice: Signing with debug keystore')
-		}
-		keystore = android.default_keystore(cache_directory) or {
-			eprintln('Getting a default keystore failed.\n$err')
-			exit(1)
-		}
-	} else {
-		keystore = android.resolve_keystore(keystore) or {
-			eprintln('Could not resolve keystore.\n$err')
-			exit(1)
-		}
-	}
-	if base_abo.verbosity > 1 {
-		println('Output will be signed with keystore at "$keystore.path"')
-	}
-
-	pck_opt := android.PackageOptions{
-		verbosity: opt.verbosity
-		work_dir: opt.work_dir
-		is_prod: opt.is_prod
-		api_level: opt.api_level
-		min_sdk_version: opt.min_sdk_version
-		gles_version: 2 // TODO base_abo.gles_version
-		build_tools: sdk.default_build_tools_version
-		// app_name: base_abo.app_name
-		lib_name: 'main' // TODO base_abo.lib_name
-		activity_name: 'VSDLActivity'
-		package_id: 'io.v.android.ex'
-		// format: android.PackageFormat.aab //format
-		format: android.PackageFormat.apk // format
-		// icon: base_abo.icon
-		version_code: 0 // TODO base_abo.version_code
-		// v_flags: base_abo.v_flags
-		input: opt.input
-		assets_extra: [
-			os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
-		] // base_abo.assets_extra
-		libs_extra: libs_extra // base_abo.libs_extra
-		output_file: '/tmp/t.apk' // TODO base_abo.output
-		keystore: keystore
-		base_files: os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
-		// base_files: '$os.home_dir()/Projects/vdev/v_sdl4android/tmp/v_sdl_java'
-		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path
-	}
-	android.package(pck_opt) or {
-		eprintln("Packaging didn't succeed:\n$err")
-		exit(1)
-	}
-}
-
-fn args_to_options(arguments []string, defaults Options) ?(Options, &flag.FlagParser) {
-	mut args := arguments.clone()
-
-	mut fp := flag.new_flag_parser(args)
-	fp.application(exe_pretty_name)
-	fp.version(version_full())
-	fp.description(exe_description)
-	fp.arguments_description('input')
-
-	fp.skip_executable()
-
-	mut verbosity := fp.int_opt('verbosity', `v`, 'Verbosity level 1-3') or { defaults.verbosity }
-	// TODO implement FlagParser 'is_sat(name string) bool' or something in vlib for this usecase?
-	if ('-v' in args || 'verbosity' in args) && verbosity == 0 {
-		verbosity = 1
-	}
-
-	mut opt := Options{
-		c_flags: fp.string_multi('cflag', `c`, 'Additional flags for the C compiler')
-		v_flags: fp.string_multi('flag', `f`, 'Additional flags for the V compiler')
-		archs: fp.string('archs', 0, defaults.archs.filter(it.trim_space() != '').join(','),
-			'Comma separated string with any of $android.default_archs').split(',').filter(it.trim_space() != '')
-		//
-		show_help: fp.bool('help', `h`, defaults.show_help, 'Show this help message and exit')
-		//
-		output: fp.string('output', `o`, defaults.output, 'Path to output (dir/file)')
-		//
-		verbosity: verbosity
-		//
-		cache: !fp.bool('nocache', 0, defaults.cache, 'Do not use build cache')
-		//
-		api_level: fp.string('api', 0, defaults.api_level, 'Android API level to use')
-		min_sdk_version: fp.int('min-sdk-version', 0, defaults.min_sdk_version, 'Minimum SDK version version code (android:minSdkVersion)')
-		//
-		ndk_version: fp.string('ndk-version', 0, defaults.ndk_version, 'Android NDK version to use')
-		//
-		work_dir: defaults.work_dir
-	}
-	opt.archs = opt.archs.map(it.trim_space())
-	opt.additional_args = fp.finalize()?
-
-	return opt, fp
-}
-
-fn resolve_options(mut opt Options, exit_on_error bool) {
-	// Validate SDK API level
-	mut api_level := sdk.default_api_level
-	if api_level == '' {
-		eprintln('No Android API levels could be detected in the SDK.')
-		eprintln('If the SDK is working and writable, new platforms can be installed with:')
-		eprintln('`$exe_name install "platforms;android-<API LEVEL>"`')
-		eprintln('You can set a custom SDK with the ANDROID_SDK_ROOT env variable')
-		if exit_on_error {
-			exit(1)
-		}
-	}
-	if opt.api_level != '' {
-		// Set user requested API level
-		if sdk.has_api(opt.api_level) {
-			api_level = opt.api_level
-		} else {
-			// TODO Warnings
-			eprintln('Notice: The requested Android API level "$opt.api_level" is not available in the SDK.')
-			eprintln('Notice: Falling back to default "$api_level"')
-		}
-	}
-	if api_level.i16() < sdk.min_supported_api_level.i16() {
-		eprintln('Android API level "$api_level" is less than the supported level ($sdk.min_supported_api_level).')
-		eprintln('A vab compatible version can be installed with `$exe_name install "platforms;android-$sdk.min_supported_api_level"`')
-		if exit_on_error {
-			exit(1)
-		}
-	}
-
-	opt.api_level = api_level
-
-	// Validate NDK version
-	mut ndk_version := ndk.default_version()
-	if ndk_version == '' {
-		eprintln('No Android NDK versions could be detected.')
-		eprintln('If the SDK is working and writable, new NDK versions can be installed with:')
-		eprintln('`$exe_name install "ndk;<NDK VERSION>"`')
-		eprintln('The minimum supported NDK version is "$ndk.min_supported_version"')
-		if exit_on_error {
-			exit(1)
-		}
-	}
-	if opt.ndk_version != '' {
-		// Set user requested NDK version
-		if ndk.has_version(opt.ndk_version) {
-			ndk_version = opt.ndk_version
-		} else {
-			// TODO FIX Warnings and add install function
-			eprintln('Android NDK version "$opt.ndk_version" could not be found.')
-			eprintln('If the SDK is working and writable, new NDK versions can be installed with:')
-			eprintln('`$exe_name install "ndk;<NDK VERSION>"`')
-			eprintln('The minimum supported NDK version is "$ndk.min_supported_version"')
-			eprintln('Falling back to default $ndk_version')
-		}
-	}
-
-	opt.ndk_version = ndk_version
-
-	// Resolve NDK vs. SDK available platforms
-	min_ndk_api_level := ndk.min_api_available(opt.ndk_version)
-	max_ndk_api_level := ndk.max_api_available(opt.ndk_version)
-	if opt.api_level.i16() > max_ndk_api_level.i16()
-		|| opt.api_level.i16() < min_ndk_api_level.i16() {
-		if opt.api_level.i16() > max_ndk_api_level.i16() {
-			eprintln('Notice: Falling back to API level "$max_ndk_api_level" (SDK API level $opt.api_level > highest NDK API level $max_ndk_api_level).')
-			opt.api_level = max_ndk_api_level
-		}
-		if opt.api_level.i16() < min_ndk_api_level.i16() {
-			if sdk.has_api(min_ndk_api_level) {
-				eprintln('Notice: Falling back to API level "$min_ndk_api_level" (SDK API level $opt.api_level < lowest NDK API level $max_ndk_api_level).')
-				opt.api_level = min_ndk_api_level
-			}
-		}
-	}
+	return collect_libs
 }
 
 fn ab_work_dir() string {
@@ -461,4 +357,20 @@ fn version() string {
 		}
 	}
 	return v
+}
+
+fn deploy(deploy_opt android.DeployOptions) {
+	android.deploy(deploy_opt) or {
+		eprintln('$cli.exe_short_name deployment didn\'t succeed.\n$err')
+		if deploy_opt.kill_adb {
+			cli.kill_adb()
+		}
+		exit(1)
+	}
+	if deploy_opt.verbosity > 0 {
+		println('Deployed to $deploy_opt.device_id successfully')
+	}
+	if deploy_opt.kill_adb {
+		cli.kill_adb()
+	}
 }

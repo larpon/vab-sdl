@@ -6,8 +6,8 @@ import vab.android.ndk
 type SDL2ConfigType = SDL2Config | SDL2ImageConfig | SDL2MixerConfig | SDL2TTFConfig
 
 struct SDL2Config {
-	abo     AndroidBuildOptions
-	root    string
+	abo  AndroidBuildOptions
+	root string
 }
 
 fn libsdl2_node(config SDL2Config) !&Node {

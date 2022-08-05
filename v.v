@@ -4,7 +4,6 @@ import os
 import vab.android
 // import vab.android.ndk
 
-
 struct VBuildOptions {
 	v_flags  []string
 	input    string
