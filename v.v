@@ -4,22 +4,16 @@ import os
 import vab.android
 // import vab.android.ndk
 
-struct VBuildOptions {
-	v_flags  []string
-	input    string
-	lib_name string
-}
-
 struct VSDL2Config {
 	sdl2_configs []SDL2ConfigType
 	abo          AndroidBuildOptions
-	vbo          VBuildOptions
+	aco          android.CompileOptions
 }
 
 pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 	sdl2_configs := vsc.sdl2_configs
 	abo := vsc.abo
-	vbo := vsc.vbo
+	aco := vsc.aco
 
 	// TODO
 	mut c_flags := abo.flags
@@ -55,23 +49,18 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 		}
 	}
 
-	compile_cache_key := if os.is_dir(vbo.input) { vbo.input } else { '' } // || input_ext == '.v'
 	acop := android.CompileOptions{
-		verbosity: abo.verbosity
-		cache: abo.cache
-		cache_key: compile_cache_key
-		parallel: abo.parallel
-		is_prod: abo.is_prod
+		...aco
 		no_printf_hijack: false
-		v_flags: vbo.v_flags //['-g','-gc boehm'] //['-gc none']
+		// v_flags: vbo.v_flags //['-g','-gc boehm'] //['-gc none']
 		c_flags: c_flags
 		archs: [abo.arch]
-		work_dir: abo.work_dir
-		input: vbo.input // abo.input
-		ndk_version: abo.ndk_version
-		lib_name: 'main' // abo.lib_name
-		api_level: abo.api_level
-		min_sdk_version: abo.min_sdk_version
+		// work_dir: abo.work_dir
+		// input: vbo.input // abo.input
+		// ndk_version: abo.ndk_version
+		// lib_name: vbo.lib_name
+		// api_level: abo.api_level
+		// min_sdk_version: abo.min_sdk_version
 	}
 
 	return acop
@@ -82,7 +71,7 @@ fn libv_node(config VSDL2Config) !&Node {
 
 	sdl2_configs := config.sdl2_configs
 	abo := config.abo
-	vbo := config.vbo
+	aco := config.android_compile_options()
 	arch := abo.arch
 
 	heap_v_config := &VSDL2Config{
@@ -98,7 +87,7 @@ fn libv_node(config VSDL2Config) !&Node {
 	v_to_c.data['v_config'] = voidptr(heap_v_config)
 	v_to_c.funcs['pre_build'] = compile_v_to_c
 
-	mut lib := new_node(vbo.lib_name, .build_dynamic_lib, arch, ['cpp'])
+	mut lib := new_node(aco.lib_name, .build_dynamic_lib, arch, ['cpp'])
 	if arch == 'armeabi-v7a' {
 		lib.Node.tags << 'use-v7a-as-armeabi'
 	}
@@ -142,7 +131,6 @@ fn compile_v_to_c(mut n Node) ! {
 	}
 	v_config := &VSDL2Config(n.data['v_config'])
 	// sdl2_configs := v_config.sdl2_configs
-	// vbo := v_config.vbo
 	abo := v_config.abo
 
 	acop := v_config.android_compile_options()
@@ -176,7 +164,6 @@ fn collect_v_c_o_files(mut n Node) ! {
 	}
 	v_config := &VSDL2Config(n.data['v_config'])
 	// sdl2_configs := v_config.sdl2_configs
-	// vbo := v_config.vbo
 	abo := v_config.abo
 	arch := abo.arch
 

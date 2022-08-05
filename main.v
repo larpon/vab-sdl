@@ -92,7 +92,7 @@ fn main() {
 	opt.lib_name = 'main'
 	opt.activity_name = 'VSDLActivity'
 	opt.package_id = 'io.v.android.ex'
-
+	opt.log_tags << ['SDL', 'SDL/APP']
 	mut libs_extra := compile_sdl_and_v(opt) or { panic(err) }
 	//
 	//////////////////////////////////////////////
@@ -120,6 +120,7 @@ fn main() {
 		}
 	}
 
+	// NOTE this step from vab is skipped since we've already compiled the v sources in compile_sdl_and_v()
 	// aco := opt.as_android_compile_options()
 	// comp_opt := android.CompileOptions{
 	// 	...aco
@@ -137,7 +138,6 @@ fn main() {
 			os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
 		] // base_abo.assets_extra
 		libs_extra: libs_extra // base_abo.libs_extra
-		// output_file: '/tmp/t.apk' // TODO base_abo.output
 		keystore: keystore
 		base_files: os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
 		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path
@@ -159,6 +159,7 @@ fn main() {
 
 fn compile_sdl_and_v(opt cli.Options) ![]string {
 	mut collect_libs := []string{}
+
 	// Dump meta data from V
 	mut v_flags := opt.v_flags.clone()
 
@@ -207,6 +208,9 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			note: 'Build SDL2 and SDL2 modules for $arch variant'
 		}
 
+		if apis[arch].len == 0 {
+			return error('NDK apis for arch "$arch" is empty: $apis')
+		}
 		min_api_level_available := apis[arch][0] // TODO
 		mut sdl2_abo := AndroidBuildOptions{
 			...base_abo
@@ -298,13 +302,11 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			}
 		}
 
+		aco := opt.as_android_compile_options()
 		v_config := VSDL2Config{
 			sdl2_configs: sdl2_configs
 			abo: sdl2_abo
-			vbo: VBuildOptions{
-				input: opt.input
-				lib_name: opt.lib_name
-			}
+			aco: aco
 		}
 		mut libv := libv_node(v_config) or { return error(@FN + ': $err') }
 
