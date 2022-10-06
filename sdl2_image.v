@@ -241,6 +241,7 @@ fn libjpeg_node(config SDL2ImageConfig) !&Node {
 	jpg_root := os.join_path(root, 'external', 'jpeg-9b')
 
 	mut a_build := AndroidNode{
+		id: 'jpeg'
 		Node: &Node{
 			id: 'jpeg'
 			note: 'libjpeg .o to .a for $arch'
@@ -250,6 +251,7 @@ fn libjpeg_node(config SDL2ImageConfig) !&Node {
 	a_build.attach_data(abo: abo)
 
 	mut o_build := &AndroidNode{
+		id: 'jpeg'
 		Node: &Node{
 			id: 'jpeg'
 			note: 'libjpeg .c to .o for $arch'

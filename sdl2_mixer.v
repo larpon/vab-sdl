@@ -77,6 +77,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 			// Add all ogg includes to SDL2_mixer's C -> .o build
 			if ogg_o_build := ogg_build.find_nearest(id: 'ogg', tags: ['o', 'build', '$arch']) {
 				ogg_o_build_an := AndroidNode{
+					id: ogg_o_build.id
 					Node: ogg_o_build
 				}
 				vorbis_root := os.join_path(root, 'external', 'libvorbis-1.3.5')

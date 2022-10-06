@@ -16,7 +16,7 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 	aco := vsc.aco
 
 	// TODO
-	mut c_flags := abo.flags
+	mut c_flags := abo.flags.clone()
 	c_flags << '-UNDEBUG'
 	c_flags << '-D_FORTIFY_SOURCE=2'
 
@@ -51,7 +51,8 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 
 	acop := android.CompileOptions{
 		...aco
-		no_printf_hijack: false
+		// no_printf_hijack: false
+		no_so_build: true // NOTE IMPORTANT don't bother compiling the .so
 		// v_flags: vbo.v_flags //['-g','-gc boehm'] //['-gc none']
 		c_flags: c_flags
 		archs: [abo.arch]
@@ -134,25 +135,13 @@ fn compile_v_to_c(mut n Node) ! {
 	abo := v_config.abo
 
 	acop := v_config.android_compile_options()
-	// TODO ? Building the .so will fail - but right now it's nice to piggyback
-	// on all the other parts that succeed
 	if _ := android.compile(acop) {
 		// Just continue
 		if abo.verbosity > 2 {
 			eprintln('V to C compiling succeeded')
 		}
 	} else {
-		if err is android.CompileError {
-			if err.kind != .o_to_so {
-				return error('$err_sig: unexpected compile error: $err.err')
-			} else {
-				if abo.verbosity > 2 {
-					eprintln('V to C compiling failed compiling .o to .so, that is okay for now')
-				}
-			}
-		} else {
-			return error('$err_sig: unexpected compile error: $err')
-		}
+		return error('$err_sig: unexpected compile error: $err')
 	}
 }
 

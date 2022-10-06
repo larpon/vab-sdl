@@ -20,7 +20,7 @@ compile SDL for Android.
 	cache_directory        = ab_cache_dir()
 	accepted_input_files   = ['.v', '.apk', '.aab']
 	supported_sdl_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
-		'2.0.20', '2.0.22']
+		'2.0.20', '2.0.22', '2.24.0']
 )
 
 fn main() {
@@ -296,6 +296,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		sdl_build.add('tasks', libsdl2)
 
 		mut v_build := AndroidNode{
+			id: 'V.$arch'
 			Node: &Node{
 				id: 'V.$arch'
 				note: 'Build V sources for $arch variant'

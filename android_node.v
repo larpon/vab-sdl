@@ -1,10 +1,8 @@
 module main
 
 import os
-import sync.pool
-// import vab.android
+import vab.util as vab_util
 import vab.android.ndk
-import vab.android.util
 
 pub enum NodeKind {
 	build_src_to_o
@@ -15,67 +13,6 @@ pub enum NodeKind {
 pub enum LibKind {
 	dynamic
 	@static
-}
-
-pub struct ShellJob {
-	std_out  string
-	std_err  string
-	env_vars map[string]string
-	cmd      []string
-}
-
-pub struct ShellJobResult {
-	job    ShellJob
-	result os.Result
-}
-
-pub fn async_run(pp &pool.PoolProcessor, idx int, wid int) &ShellJobResult {
-	item := pp.get_item<ShellJob>(idx)
-	return sync_run(item)
-}
-
-pub fn sync_run(item ShellJob) &ShellJobResult {
-	for key, value in item.env_vars {
-		os.setenv(key, value, true)
-	}
-	if item.std_out != '' {
-		println(item.std_out)
-	}
-	if item.std_err != '' {
-		eprintln(item.std_err)
-	}
-	res := util.run(item.cmd)
-	return &ShellJobResult{
-		job: item
-		result: res
-	}
-}
-
-pub fn run_jobs(jobs []ShellJob, parallel bool, verbosity int) ! {
-	if parallel {
-		mut pp := pool.new_pool_processor(callback: async_run)
-		pp.work_on_items(jobs)
-		for job_res in pp.get_results<ShellJobResult>() {
-			util.verbosity_print_cmd(job_res.job.cmd, verbosity)
-			if verbosity > 2 {
-				println('$job_res.result.output')
-			}
-			if job_res.result.exit_code != 0 {
-				return error('${job_res.job.cmd[0]} failed with return code $job_res.result.exit_code')
-			}
-		}
-	} else {
-		for job in jobs {
-			util.verbosity_print_cmd(job.cmd, verbosity)
-			job_res := sync_run(job)
-			if verbosity > 2 {
-				println('$job_res.result.output')
-			}
-			if job_res.result.exit_code != 0 {
-				return error('${job_res.job.cmd[0]} failed with return code $job_res.result.exit_code')
-			}
-		}
-	}
 }
 
 fn product_cache_path() string {
@@ -204,6 +141,7 @@ pub fn new_node(id string, kind NodeKind, arch string, tags []string) AndroidNod
 	f_tags << 'build'
 	f_tags << arch
 	mut node := AndroidNode{
+		id: id
 		Node: &Node{
 			id: id
 			note: '$pre_id$id $comment for $arch'
@@ -235,6 +173,7 @@ pub struct AndroidNodeData {
 
 fn (an &AndroidNode) from_node(node Node) AndroidNode {
 	return AndroidNode{
+		id: node.id
 		Node: node
 	}
 }
@@ -470,7 +409,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 		}
 	}
 
-	mut jobs := []ShellJob{}
+	mut jobs := []vab_util.ShellJob{}
 
 	if file_nodes := node.items['sources'] {
 		// Architechture dependent flags
@@ -541,25 +480,27 @@ fn (an &AndroidNode) build_src_to_o() ! {
 				'-o "$object_file"',
 			]
 
-			jobs << ShellJob{
-				std_err: if bo.verbosity > 2 {
-					mut thumb := ''
-					if arch == 'armeabi-7va' {
-						if '-mthumb' in flags {
-							thumb = '(thumb)'
-						} else {
-							thumb = '(arm)'
+			jobs << vab_util.ShellJob{
+				message: vab_util.ShellJobMessage {
+					std_err: if bo.verbosity > 2 {
+						mut thumb := ''
+						if arch == 'armeabi-7va' {
+							if '-mthumb' in flags {
+								thumb = '(thumb)'
+							} else {
+								thumb = '(arm)'
+							}
 						}
+						'Compiling $lib for $arch $thumb C file "${os.file_name(source_file)}"'
+					} else {
+						''
 					}
-					'Compiling $lib for $arch $thumb C file "${os.file_name(source_file)}"'
-				} else {
-					''
 				}
 				cmd: build_cmd
 			}
 		}
 	}
-	run_jobs(jobs, bo.parallel, bo.verbosity)!
+	vab_util.run_jobs(jobs, bo.parallel, bo.verbosity)!
 	jobs.clear()
 }
 
@@ -624,7 +565,7 @@ fn (an &AndroidNode) build_lib_static() ! {
 		return error('$err_sig: could not locate any o files for building $lib_name')
 	}
 
-	mut jobs := []ShellJob{}
+	mut jobs := []vab_util.ShellJob{}
 
 	ar := ndk.tool(.ar, bo.ndk_version, arch) or {
 		return error('$err_sig: failed getting ar tool. $err')
@@ -637,11 +578,13 @@ fn (an &AndroidNode) build_lib_static() ! {
 		o_files.map('"$it"').join(' '),
 	]
 
-	jobs << ShellJob{
-		std_err: if abo.verbosity > 1 { 'Compiling (static) $lib for $arch' } else { '' }
+	jobs << vab_util.ShellJob{
+		message: vab_util.ShellJobMessage {
+			std_err: if abo.verbosity > 1 { 'Compiling (static) $lib for $arch' } else { '' }
+		}
 		cmd: build_a_cmd
 	}
-	run_jobs(jobs, abo.parallel, abo.verbosity)!
+	vab_util.run_jobs(jobs, abo.parallel, abo.verbosity)!
 	jobs.clear()
 	abo.make_product(lib_a_file)!
 }
@@ -780,7 +723,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 		}
 	}*/
 
-	mut jobs := []ShellJob{}
+	mut jobs := []vab_util.ShellJob{}
 
 	ndk_flag_res := ndk.compiler_flags_from_config(bo.ndk_version,
 		arch: arch
@@ -801,16 +744,18 @@ fn (an &AndroidNode) build_lib_shared() ! {
 		'-o "$lib_so_file"',
 	]
 
-	jobs << ShellJob{
-		std_err: if abo.verbosity > 1 {
-			'Compiling (shared) $lib for $arch'
-		} else {
-			''
+	jobs << vab_util.ShellJob{
+		message: vab_util.ShellJobMessage {
+			std_err: if abo.verbosity > 1 {
+				'Compiling (shared) $lib for $arch'
+			} else {
+				''
+			}
 		}
 		cmd: build_so_cmd
 	}
 
-	run_jobs(jobs, abo.parallel, abo.verbosity)!
+	vab_util.run_jobs(jobs, abo.parallel, abo.verbosity)!
 	jobs.clear()
 
 	abo.make_product(lib_so_file)!
