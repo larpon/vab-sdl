@@ -44,7 +44,7 @@ fn (abo &AndroidBuildOptions) make_product(path string) ! {
 	mut products_path := product_cache_path()
 	if !os.exists(products_path) {
 		os.mkdir_all(products_path) or {
-			return error('$err_sig: could not make product directory "$products_path"')
+			return error('${err_sig}: could not make product directory "${products_path}"')
 		}
 	}
 
@@ -56,20 +56,20 @@ fn (abo &AndroidBuildOptions) make_product(path string) ! {
 	}
 
 	if dst_path == '' {
-		return error('$err_sig: could resolve product directory for "$path"')
+		return error('${err_sig}: could resolve product directory for "${path}"')
 	}
 
 	if !os.exists(dst_path) {
 		os.mkdir_all(dst_path) or {
-			return error('$err_sig: could not make product directory "$dst_path"')
+			return error('${err_sig}: could not make product directory "${dst_path}"')
 		}
 	}
 
 	dst := os.join_path(dst_path, os.file_name(path))
 	if os.exists(dst) {
-		os.rm(dst) or { return error('$err_sig: could not delete existsing product "$dst"') }
+		os.rm(dst) or { return error('${err_sig}: could not delete existsing product "${dst}"') }
 	}
-	os.cp(path, dst) or { return error('$err_sig: could not copy product "$path" to "$dst"') }
+	os.cp(path, dst) or { return error('${err_sig}: could not copy product "${path}" to "${dst}"') }
 }
 
 fn (abo &AndroidBuildOptions) path_product_lib(id string) string {
@@ -144,7 +144,7 @@ pub fn new_node(id string, kind NodeKind, arch string, tags []string) AndroidNod
 		id: id
 		Node: &Node{
 			id: id
-			note: '$pre_id$id $comment for $arch'
+			note: '${pre_id}${id} ${comment} for ${arch}'
 			tags: f_tags
 		}
 	}
@@ -152,8 +152,8 @@ pub fn new_node(id string, kind NodeKind, arch string, tags []string) AndroidNod
 	if kind == .build_dynamic_lib {
 		mut exports := &Node{
 			id: '${node.id}.exports'
-			note: 'lib$node.id exports for $arch'
-			tags: ['exports', '$arch']
+			note: 'lib${node.id} exports for ${arch}'
+			tags: ['exports', '${arch}']
 		}
 		node.add('exports', exports)
 	}
@@ -190,7 +190,7 @@ pub fn (an AndroidNode) fetch_data() !AndroidNodeData {
 	err_sig := @FN
 	if node_data := an.Node.data['AndroidNode'] {
 		if isnil(node_data) {
-			return error('$err_sig: data field for $an.id is nil')
+			return error('${err_sig}: data field for ${an.id} is nil')
 		}
 		heap_and := &AndroidNodeData(node_data)
 		stack_and := AndroidNodeData{
@@ -198,7 +198,7 @@ pub fn (an AndroidNode) fetch_data() !AndroidNodeData {
 		}
 		return stack_and
 	}
-	return error('$err_sig: $an.id has no data attached')
+	return error('${err_sig}: ${an.id} has no data attached')
 }
 
 pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string) ! {
@@ -209,11 +209,11 @@ pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string)
 		if kind == 'includes' {
 			exports_node.add_include(entry, tags)!
 		} else {
-			e_node := as_heap(id: '$entry', note: 'unknown export', tags: tags)
+			e_node := as_heap(id: '${entry}', note: 'unknown export', tags: tags)
 			exports_node.add('includes', e_node)
 		}
 	} else {
-		return error('$err_sig: $an.id has no exports entry in items')
+		return error('${err_sig}: ${an.id} has no exports entry in items')
 	}
 }
 
@@ -237,7 +237,7 @@ pub fn (an &AndroidNode) parent_exports(arch string) []AndroidNode {
 	for !isnil(node) {
 		if exports := node.items['exports'] {
 			for export_node in exports {
-				if export_node.has_tags(['$arch']) {
+				if export_node.has_tags(['${arch}']) {
 					res << an.from_node(export_node)
 				}
 			}
@@ -254,7 +254,7 @@ pub fn (an &AndroidNode) exports(arch string) []AndroidNode {
 	mut res := []AndroidNode{}
 	if exports := an.Node.items['exports'] {
 		for export_node in exports {
-			if export_node.has_tags(['$arch']) {
+			if export_node.has_tags(['${arch}']) {
 				res << an.from_node(export_node)
 			}
 		}
@@ -264,7 +264,7 @@ pub fn (an &AndroidNode) exports(arch string) []AndroidNode {
 
 pub fn (an &AndroidNode) includes() []string {
 	if include_nodes := an.items['includes'] {
-		return include_nodes.map('$it.id')
+		return include_nodes.map('${it.id}')
 	}
 	return []string{}
 }
@@ -272,7 +272,7 @@ pub fn (an &AndroidNode) includes() []string {
 pub fn (an &AndroidNode) arch() !string {
 	err_sig := @FN
 	arch_tag := an.Node.find_one_of_tags(ndk.supported_archs) or {
-		return error('$err_sig: could not locate any tags on node')
+		return error('${err_sig}: could not locate any tags on node')
 	} // TODO non-recursive node dump
 	return arch_tag
 }
@@ -308,7 +308,7 @@ pub fn (an &AndroidNode) add_flag(flag string, tags []string) ! {
 	mut flag_tags := tags.clone()
 	flag_tags << ['flag', flag_type]
 
-	n.add('flags', as_heap(id: '$flag', note: desc, tags: flag_tags))
+	n.add('flags', as_heap(id: '${flag}', note: desc, tags: flag_tags))
 }
 
 pub fn (an &AndroidNode) add_include(include string, tags []string) !&Node {
@@ -322,7 +322,7 @@ pub fn (an &AndroidNode) add_include(include string, tags []string) !&Node {
 	} else if os.is_file(include) {
 		inc_type = 'file'
 	} else {
-		return error('$err_sig: invalid include "$include" in node $node.id')
+		return error('${err_sig}: invalid include "${include}" in node ${node.id}')
 	}
 
 	desc += inc_type + ' include'
@@ -337,7 +337,7 @@ pub fn (an &AndroidNode) add_include(include string, tags []string) !&Node {
 	mut i_tags := tags.clone()
 	i_tags << ['include', inc_type]
 
-	i_node := as_heap(id: '$include', note: desc, tags: i_tags)
+	i_node := as_heap(id: '${include}', note: desc, tags: i_tags)
 	node.add('includes', i_node)
 	return i_node
 }
@@ -352,16 +352,16 @@ pub fn (an &AndroidNode) add_source(path string, tags []string) !&Node {
 	if os.is_file(path) {
 		inc_type = 'file'
 	} else {
-		return error('$err_sig: "$path" is not a file')
+		return error('${err_sig}: "${path}" is not a file')
 	}
 
 	desc += 'source ' + inc_type
 
 	arm_note := if 'arm' in tags { ' (arm)' } else { '' }
 	if 'c' in tags {
-		desc = 'C$arm_note ' + desc
+		desc = 'C${arm_note} ' + desc
 	} else if 'cpp' in tags {
-		desc = 'C++$arm_note ' + desc
+		desc = 'C++${arm_note} ' + desc
 	}
 
 	mut s_tags := tags.clone()
@@ -372,7 +372,7 @@ pub fn (an &AndroidNode) add_source(path string, tags []string) !&Node {
 	}
 	s_tags << inc_type
 
-	s_node := as_heap(id: '$path', note: desc, tags: s_tags)
+	s_node := as_heap(id: '${path}', note: desc, tags: s_tags)
 	n.add('sources', s_node)
 	return s_node
 }
@@ -393,7 +393,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 	}
 	if !os.is_dir(out_dir) {
 		os.mkdir_all(out_dir) or {
-			return error('$err_sig: failed making directory "$out_dir". $err')
+			return error('${err_sig}: failed making directory "${out_dir}". ${err}')
 		}
 	}
 
@@ -425,7 +425,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 
 			if bo.cache && os.is_file(object_file) {
 				if bo.verbosity > 2 {
-					eprintln('Using cached object file for $lib $arch "${os.file_name(object_file)}"')
+					eprintln('Using cached object file for ${lib} ${arch} "${os.file_name(object_file)}"')
 				}
 				continue
 			}
@@ -440,14 +440,14 @@ fn (an &AndroidNode) build_src_to_o() ! {
 
 			match ndk_compiler_type {
 				.c {
-					includes << exported_include_nodes.filter(it.has_tags(['c'])).map('-I"$it.id"')
-					includes << include_nodes.filter(it.has_tags(['c'])).map('-I"$it.id"')
-					flags << flag_nodes.filter(it.has_tags(['c'])).map('$it.id')
+					includes << exported_include_nodes.filter(it.has_tags(['c'])).map('-I"${it.id}"')
+					includes << include_nodes.filter(it.has_tags(['c'])).map('-I"${it.id}"')
+					flags << flag_nodes.filter(it.has_tags(['c'])).map('${it.id}')
 				}
 				.cpp {
-					includes << exported_include_nodes.filter(it.has_tags(['cpp'])).map('-I"$it.id"')
-					includes << include_nodes.filter(it.has_tags(['cpp'])).map('-I"$it.id"')
-					flags << flag_nodes.filter(it.has_tags(['cpp'])).map('$it.id')
+					includes << exported_include_nodes.filter(it.has_tags(['cpp'])).map('-I"${it.id}"')
+					includes << include_nodes.filter(it.has_tags(['cpp'])).map('-I"${it.id}"')
+					flags << flag_nodes.filter(it.has_tags(['cpp'])).map('${it.id}')
 				}
 			}
 
@@ -457,7 +457,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 
 			// TODO introduce method to get just the `clang` or `clang++` base wrapper
 			compiler := ndk.compiler(ndk_compiler_type, bo.ndk_version, arch, bo.api_level) or {
-				return error('$err_sig: failed getting NDK compiler. $err')
+				return error('${err_sig}: failed getting NDK compiler. ${err}')
 			}
 
 			mut m_cflags := ['-MMD', '-MP'] //, '-MF <tmp path to SDL_<name>.o.d>']
@@ -468,6 +468,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 				arch: arch
 				lang: ndk_compiler_type
 				debug: !bo.is_prod
+				allow_undefined_symbols: true // TODO workaround *new* mysterious "error: implicit declaration of function 'glVertexAttribDivisorANGLE' is invalid in C99 [-Werror,-Wimplicit-function-declaration]"
 			)!
 			build_cmd := [
 				compiler,
@@ -476,12 +477,12 @@ fn (an &AndroidNode) build_src_to_o() ! {
 				// arch_cflags[arch].join(' '),
 				flags.join(' '),
 				includes.join(' '),
-				'-c "$source_file"',
-				'-o "$object_file"',
+				'-c "${source_file}"',
+				'-o "${object_file}"',
 			]
 
 			jobs << vab_util.ShellJob{
-				message: vab_util.ShellJobMessage {
+				message: vab_util.ShellJobMessage{
 					std_err: if bo.verbosity > 2 {
 						mut thumb := ''
 						if arch == 'armeabi-7va' {
@@ -491,7 +492,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 								thumb = '(arm)'
 							}
 						}
-						'Compiling $lib for $arch $thumb C file "${os.file_name(source_file)}"'
+						'Compiling ${lib} for ${arch} ${thumb} C file "${os.file_name(source_file)}"'
 					} else {
 						''
 					}
@@ -520,7 +521,7 @@ fn (an &AndroidNode) build_lib_static() ! {
 	}
 	if !os.is_dir(out_dir) {
 		os.mkdir_all(out_dir) or {
-			return error('$err_sig: failed making directory "$out_dir". $err')
+			return error('${err_sig}: failed making directory "${out_dir}". ${err}')
 		}
 	}
 
@@ -530,7 +531,7 @@ fn (an &AndroidNode) build_lib_static() ! {
 
 	if bo.cache && os.is_file(lib_a_file) {
 		if bo.verbosity > 2 {
-			eprintln('Using cached .a file for $lib $arch "${os.file_name(lib_a_file)}"')
+			eprintln('Using cached .a file for ${lib} ${arch} "${os.file_name(lib_a_file)}"')
 		}
 		abo.make_product(lib_a_file)!
 		return
@@ -549,7 +550,7 @@ fn (an &AndroidNode) build_lib_static() ! {
 	}
 
 	// collect .o files from child nodes
-	if o_build := node.find_nearest(id: lib, tags: ['o', 'build', '$arch']) {
+	if o_build := node.find_nearest(id: lib, tags: ['o', 'build', '${arch}']) {
 		o_out_dir := os.join_path(bo.path_objects(node.id), arch)
 		if sources := o_build.items['sources'] {
 			for source_node in sources {
@@ -562,25 +563,25 @@ fn (an &AndroidNode) build_lib_static() ! {
 		}
 	}
 	if o_files.len == 0 {
-		return error('$err_sig: could not locate any o files for building $lib_name')
+		return error('${err_sig}: could not locate any o files for building ${lib_name}')
 	}
 
 	mut jobs := []vab_util.ShellJob{}
 
 	ar := ndk.tool(.ar, bo.ndk_version, arch) or {
-		return error('$err_sig: failed getting ar tool. $err')
+		return error('${err_sig}: failed getting ar tool. ${err}')
 	}
 
 	build_a_cmd := [
 		ar,
 		'crsD',
-		'"$lib_a_file"',
-		o_files.map('"$it"').join(' '),
+		'"${lib_a_file}"',
+		o_files.map('"${it}"').join(' '),
 	]
 
 	jobs << vab_util.ShellJob{
-		message: vab_util.ShellJobMessage {
-			std_err: if abo.verbosity > 1 { 'Compiling (static) $lib for $arch' } else { '' }
+		message: vab_util.ShellJobMessage{
+			std_err: if abo.verbosity > 1 { 'Compiling (static) ${lib} for ${arch}' } else { '' }
 		}
 		cmd: build_a_cmd
 	}
@@ -605,7 +606,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 	}
 	if !os.is_dir(out_dir) {
 		os.mkdir_all(out_dir) or {
-			return error('$err_sig: failed making directory "$out_dir". $err')
+			return error('${err_sig}: failed making directory "${out_dir}". ${err}')
 		}
 	}
 
@@ -615,13 +616,13 @@ fn (an &AndroidNode) build_lib_shared() ! {
 
 	if bo.cache && os.is_file(lib_so_file) {
 		if bo.verbosity > 2 {
-			eprintln('Using cached .so file for $lib $arch "${os.file_name(lib_so_file)}"')
+			eprintln('Using cached .so file for ${lib} ${arch} "${os.file_name(lib_so_file)}"')
 		}
 		abo.make_product(lib_so_file)!
 		if arch == 'armeabi-v7a' && node.has_tags(['use-v7a-as-armeabi']) {
 			// TODO fix DT_NAME crash instead of including a copy of the armeabi-v7a lib
 			armeabi_lib_dir := bo.path_arch(node.id, 'armeabi', 'lib')
-			armeabi_lib_dst := os.join_path(armeabi_lib_dir, '$lib_name')
+			armeabi_lib_dst := os.join_path(armeabi_lib_dir, '${lib_name}')
 			abo.make_product(armeabi_lib_dst)!
 		}
 		return
@@ -639,7 +640,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 	}
 
 	// collect .o files from child nodes
-	if o_build := node.find_nearest(id: lib, tags: ['o', 'build', '$arch']) {
+	if o_build := node.find_nearest(id: lib, tags: ['o', 'build', '${arch}']) {
 		o_out_dir := os.join_path(bo.path_objects(node.id), arch)
 		if sources := o_build.items['sources'] {
 			for source_node in sources {
@@ -652,7 +653,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 		}
 	}
 	if o_files.len == 0 {
-		return error('$err_sig: could not locate any o files for building $lib_name')
+		return error('${err_sig}: could not locate any o files for building ${lib_name}')
 	}
 
 	// automatically collect libs from dependencies
@@ -672,16 +673,16 @@ fn (an &AndroidNode) build_lib_shared() ! {
 				if os.is_file(a_lib) {
 					a_files << a_lib
 				} else {
-					return error('$err_sig: could not locate static version of dependency libs $a_lib for $lib_name')
+					return error('${err_sig}: could not locate static version of dependency libs ${a_lib} for ${lib_name}')
 				}
 			} else if libs_node.has_tags(['dynamic']) {
 				if os.is_file(so_lib) {
 					so_files << so_lib
 				} else {
-					return error('$err_sig: could not locate shared version of dependency libs $so_lib for $lib_name')
+					return error('${err_sig}: could not locate shared version of dependency libs ${so_lib} for ${lib_name}')
 				}
 			} else {
-				return error('$err_sig: could not locate any of dependency libs $a_lib / $so_lib for $lib_name')
+				return error('${err_sig}: could not locate any of dependency libs ${a_lib} / ${so_lib} for ${lib_name}')
 			}
 		}
 	}
@@ -706,7 +707,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 
 	// TODO introduce method to get just the `clang` or `clang++` base wrapper
 	compiler := ndk.compiler(ndk_compiler_type, bo.ndk_version, arch, bo.api_level) or {
-		return error('$err_sig: failed getting NDK compiler. $err')
+		return error('${err_sig}: failed getting NDK compiler. ${err}')
 	}
 
 	/*
@@ -735,19 +736,19 @@ fn (an &AndroidNode) build_lib_shared() ! {
 	// Finally, build libXXX.so
 	build_so_cmd := [
 		compiler,
-		'-Wl,-soname,$lib_name -shared',
-		o_files.map('"$it"').join(' '),
-		a_files.map('"$it"').join(' '),
-		so_files.map('"$it"').join(' '),
+		'-Wl,-soname,${lib_name} -shared',
+		o_files.map('"${it}"').join(' '),
+		a_files.map('"${it}"').join(' '),
+		so_files.map('"${it}"').join(' '),
 		ndk_flag_res.ld_flags.join(' '),
 		ld_flags.join(' '),
-		'-o "$lib_so_file"',
+		'-o "${lib_so_file}"',
 	]
 
 	jobs << vab_util.ShellJob{
-		message: vab_util.ShellJobMessage {
+		message: vab_util.ShellJobMessage{
 			std_err: if abo.verbosity > 1 {
-				'Compiling (shared) $lib for $arch'
+				'Compiling (shared) ${lib} for ${arch}'
 			} else {
 				''
 			}
@@ -766,13 +767,13 @@ fn (an &AndroidNode) build_lib_shared() ! {
 		armeabi_lib_dir := bo.path_arch(node.id, 'armeabi', 'lib')
 		armeabi_v7a_lib_dir := bo.path_arch(node.id, arch, 'lib')
 		os.mkdir_all(armeabi_lib_dir) or {
-			return error('$err_sig: failed making directory "$armeabi_lib_dir".\n$err')
+			return error('${err_sig}: failed making directory "${armeabi_lib_dir}".\n${err}')
 		}
 
-		armeabi_lib_src := os.join_path(armeabi_v7a_lib_dir, '$lib_name')
-		armeabi_lib_dst := os.join_path(armeabi_lib_dir, '$lib_name')
+		armeabi_lib_src := os.join_path(armeabi_v7a_lib_dir, '${lib_name}')
+		armeabi_lib_dst := os.join_path(armeabi_lib_dir, '${lib_name}')
 		os.cp(armeabi_lib_src, armeabi_lib_dst) or {
-			return error('$err_sig: failed copying "$armeabi_lib_src" to "$armeabi_lib_dst".\n$err')
+			return error('${err_sig}: failed copying "${armeabi_lib_src}" to "${armeabi_lib_dst}".\n${err}')
 		}
 
 		abo.make_product(armeabi_lib_dst)!
@@ -786,13 +787,13 @@ pub fn (an &AndroidNode) build() ! {
 	if node.is_root() {
 		products_path := product_cache_path()
 		os.mkdir_all(products_path) or {
-			return error('$err_sig: could not make product directory "$products_path"')
+			return error('${err_sig}: could not make product directory "${products_path}"')
 		}
 	}
 
 	// Build dependencies first
 	if dependencies := node.items['dependencies'] {
-		println('Recursing $node.id $node.note')
+		println('Recursing ${node.id} ${node.note}')
 		for dep_node in dependencies {
 			a_node := an.from_node(dep_node)
 			a_node.build()!
@@ -807,7 +808,7 @@ pub fn (an &AndroidNode) build() ! {
 
 	if is_object_build {
 		items_available := node.items.keys()
-		println('Build $node.id $node.note (c to o) items $items_available')
+		println('Build ${node.id} ${node.note} (c to o) items ${items_available}')
 
 		an.build_src_to_o()!
 
@@ -838,7 +839,7 @@ pub fn (an &AndroidNode) build() ! {
 	if is_static_lib_build || is_shared_lib_build {
 		items_available := node.items.keys()
 		lib_type := if node.has_tags(['static']) { 'static' } else { 'dynamic' }
-		println('Build $node.id $node.note ($lib_type lib) items $items_available')
+		println('Build ${node.id} ${node.note} (${lib_type} lib) items ${items_available}')
 
 		if is_static_lib_build {
 			an.build_lib_static()!
@@ -869,7 +870,7 @@ pub fn (an &AndroidNode) build() ! {
 	}
 
 	if tasks := node.items['tasks'] {
-		println('Looping tasks $node.id $node.note')
+		println('Looping tasks ${node.id} ${node.note}')
 		for task_node in tasks {
 			a_node := an.from_node(task_node)
 			a_node.build()!

@@ -41,10 +41,10 @@ pub fn (mut n Node) invoke_fn(key string) ! {
 		if !isnil(func) {
 			func(mut n)!
 		} else {
-			return error(@FN + ': function named "$key" in node $n.id is nil')
+			return error(@FN + ': function named "${key}" in node ${n.id} is nil')
 		}
 	} else {
-		return error(@FN + ': no function named "$key" in node $n.id')
+		return error(@FN + ': no function named "${key}" in node ${n.id}')
 	}
 }
 
@@ -89,7 +89,7 @@ pub fn (n &Node) find_one_of_tags(tags []string) !string {
 			return t
 		}
 	}
-	return error('Node.find_one_of_tags: none of tags $tags found in $n.tags')
+	return error('Node.find_one_of_tags: none of tags ${tags} found in ${n.tags}')
 }
 
 pub fn (n &Node) has_tags(tags []string) bool {

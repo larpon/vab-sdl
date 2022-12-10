@@ -30,7 +30,11 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 	c_flags << '-DSOKOL_GLES2'
 
 	// Prevent: "ld: error: undefined symbol: glVertexAttribDivisorANGLE" etc.
-	c_flags << '-DGL_EXT_PROTOTYPES'
+	// error: implicit declaration of function 'glVertexAttribDivisorANGLE' is invalid in C99 [-Werror,-Wimplicit-function-declaration] - can be fixed by commenting it out??!! WTF?
+	// c_flags << '-DGL_EXT_PROTOTYPES'
+	// c_flags << '-DGL_GLEXT_PROTOTYPES'
+	// c_flags << ['-Werror=implicit-function-declaration']
+	// See TODO in android_node.v ... JFC what a mess
 
 	for sdl2_config in sdl2_configs {
 		match sdl2_config {
@@ -51,7 +55,6 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 
 	acop := android.CompileOptions{
 		...aco
-		// no_printf_hijack: false
 		no_so_build: true // NOTE IMPORTANT don't bother compiling the .so
 		// v_flags: vbo.v_flags //['-g','-gc boehm'] //['-gc none']
 		c_flags: c_flags
@@ -80,9 +83,9 @@ fn libv_node(config VSDL2Config) !&Node {
 	}
 
 	mut v_to_c := &Node{
-		id: 'v_to_c.$arch'
-		note: 'Compile V to C for $arch'
-		tags: ['v', 'v2c', '$arch']
+		id: 'v_to_c.${arch}'
+		note: 'Compile V to C for ${arch}'
+		tags: ['v', 'v2c', '${arch}']
 	}
 
 	v_to_c.data['v_config'] = voidptr(heap_v_config)
@@ -100,16 +103,16 @@ fn libv_node(config VSDL2Config) !&Node {
 	for sdl2_config in sdl2_configs {
 		match sdl2_config {
 			SDL2Config {
-				lib.add('libs', as_heap(id: 'SDL2', tags: ['dynamic', '$arch']))
+				lib.add('libs', as_heap(id: 'SDL2', tags: ['dynamic', '${arch}']))
 			}
 			SDL2ImageConfig {
-				lib.add('libs', as_heap(id: 'SDL2_image', tags: ['dynamic', '$arch']))
+				lib.add('libs', as_heap(id: 'SDL2_image', tags: ['dynamic', '${arch}']))
 			}
 			SDL2MixerConfig {
-				lib.add('libs', as_heap(id: 'SDL2_mixer', tags: ['dynamic', '$arch']))
+				lib.add('libs', as_heap(id: 'SDL2_mixer', tags: ['dynamic', '${arch}']))
 			}
 			SDL2TTFConfig {
-				lib.add('libs', as_heap(id: 'SDL2_ttf', tags: ['dynamic', '$arch']))
+				lib.add('libs', as_heap(id: 'SDL2_ttf', tags: ['dynamic', '${arch}']))
 			}
 		}
 	}
@@ -128,7 +131,7 @@ fn compile_v_to_c(mut n Node) ! {
 	err_sig := @MOD + '.' + @FN
 
 	if 'v_config' !in n.data.keys() {
-		return error('$err_sig: no data["v_config"] in node $n.id')
+		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
 	v_config := &VSDL2Config(n.data['v_config'])
 	// sdl2_configs := v_config.sdl2_configs
@@ -141,7 +144,7 @@ fn compile_v_to_c(mut n Node) ! {
 			eprintln('V to C compiling succeeded')
 		}
 	} else {
-		return error('$err_sig: unexpected compile error: $err')
+		return error('${err_sig}: unexpected compile error: ${err}')
 	}
 }
 
@@ -149,7 +152,7 @@ fn collect_v_c_o_files(mut n Node) ! {
 	err_sig := @MOD + '.' + @FN
 
 	if 'v_config' !in n.data.keys() {
-		return error('$err_sig: no data["v_config"] in node $n.id')
+		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
 	v_config := &VSDL2Config(n.data['v_config'])
 	// sdl2_configs := v_config.sdl2_configs
@@ -164,7 +167,7 @@ fn collect_v_c_o_files(mut n Node) ! {
 	mut o_files := []string{}
 	o_file_path := os.join_path(build_dir, 'o', arch)
 	if abo.verbosity > 1 {
-		eprintln('Collecting V -> C .o files from "$o_file_path"')
+		eprintln('Collecting V -> C .o files from "${o_file_path}"')
 	}
 
 	o_ls := os.ls(o_file_path) or { []string{} }
@@ -174,6 +177,6 @@ fn collect_v_c_o_files(mut n Node) ! {
 		}
 	}
 	for o_file in o_files {
-		n.add('o', as_heap(id: o_file, note: 'V -> C source .o file', tags: ['o', 'file', '$arch']))
+		n.add('o', as_heap(id: o_file, note: 'V -> C source .o file', tags: ['o', 'file', '${arch}']))
 	}
 }

@@ -12,7 +12,7 @@ const (
 	exe_name               = os.file_name(os.executable())
 	exe_short_name         = os.file_name(os.executable()).replace('.exe', '')
 	exe_dir                = os.dir(os.real_path(os.executable()))
-	exe_description        = '$exe_short_name
+	exe_description        = '${exe_short_name}
 compile SDL for Android.
 '
 	exe_git_hash           = ab_commit_hash()
@@ -30,14 +30,14 @@ fn main() {
 	mut fp := &flag.FlagParser(0)
 
 	opt = cli.options_from_env(opt) or {
-		eprintln('Error while parsing `VAB_FLAGS`: $err')
-		eprintln('Use `$exe_short_name -h` to see all flags')
+		eprintln('Error while parsing `VAB_FLAGS`: ${err}')
+		eprintln('Use `${exe_short_name} -h` to see all flags')
 		exit(1)
 	}
 
 	opt, fp = cli.args_to_options(os.args, opt) or {
-		eprintln('Error while parsing `os.args`: $err')
-		eprintln('Use `$exe_short_name -h` to see all flags')
+		eprintln('Error while parsing `os.args`: ${err}')
+		eprintln('Use `${exe_short_name} -h` to see all flags')
 		exit(1)
 	}
 
@@ -70,7 +70,7 @@ fn main() {
 
 	input := fp.args.last()
 	cli.validate_input(input) or {
-		eprintln('$cli.exe_short_name: $err')
+		eprintln('${cli.exe_short_name}: ${err}')
 		exit(1)
 	}
 	opt.input = input
@@ -98,7 +98,7 @@ fn main() {
 	//////////////////////////////////////////////
 
 	ado := opt.as_android_deploy_options() or {
-		eprintln('Could not create deploy options.\n$err')
+		eprintln('Could not create deploy options.\n${err}')
 		exit(1)
 	}
 	deploy_opt := android.DeployOptions{
@@ -107,7 +107,7 @@ fn main() {
 	}
 
 	if opt.verbosity > 1 {
-		println('Output will be signed with keystore at "$deploy_opt.keystore.path"')
+		println('Output will be signed with keystore at "${deploy_opt.keystore.path}"')
 	}
 
 	input_ext := os.file_ext(opt.input)
@@ -143,7 +143,7 @@ fn main() {
 		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path
 	}
 	android.package(pck_opt) or {
-		eprintln("Packaging didn't succeed.\n$err")
+		eprintln("Packaging didn't succeed.\n${err}")
 		exit(1)
 	}
 
@@ -152,7 +152,7 @@ fn main() {
 	} else {
 		if opt.verbosity > 0 {
 			println('Generated ${os.real_path(opt.output)}')
-			println('Use `$cli.exe_short_name --device <id> ${os.real_path(opt.output)}` to deploy package')
+			println('Use `${cli.exe_short_name} --device <id> ${os.real_path(opt.output)}` to deploy package')
 		}
 	}
 }
@@ -166,7 +166,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 	if opt.verbosity > 0 {
 		println('Analyzing V source')
 		if opt.v_flags.len > 0 {
-			println('V flags: `$opt.v_flags`')
+			println('V flags: `${opt.v_flags}`')
 		}
 	}
 
@@ -178,10 +178,10 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		input: opt.input
 	}
 
-	v_meta_dump := android.v_dump_meta(v_meta_opt) or { return error(@FN + ': $err') }
+	v_meta_dump := android.v_dump_meta(v_meta_opt) or { return error(@FN + ': ${err}') }
 	imported_modules := v_meta_dump.imports
 	if 'sdl' !in imported_modules {
-		eprintln('Error: v project "$opt.input" does not import `sdl`')
+		eprintln('Error: v project "${opt.input}" does not import `sdl`')
 		exit(1)
 	}
 
@@ -204,12 +204,12 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		mut sdl2_configs := []SDL2ConfigType{}
 
 		mut sdl_build := &Node{
-			id: 'SDL2.all.$arch'
-			note: 'Build SDL2 and SDL2 modules for $arch variant'
+			id: 'SDL2.all.${arch}'
+			note: 'Build SDL2 and SDL2 modules for ${arch} variant'
 		}
 
 		if apis[arch].len == 0 {
-			return error('NDK apis for arch "$arch" is empty: $apis')
+			return error('NDK apis for arch "${arch}" is empty: ${apis}')
 		}
 		min_api_level_available := apis[arch][0] // TODO
 		mut sdl2_abo := AndroidBuildOptions{
@@ -225,7 +225,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			abo: sdl2_abo
 			root: sdl2_home
 		}
-		mut libsdl2 := libsdl2_node(sdl2_config) or { return error(@FN + ': $err') }
+		mut libsdl2 := libsdl2_node(sdl2_config) or { return error(@FN + ': ${err}') }
 		sdl2_configs << sdl2_config
 
 		if 'sdl.image' in imported_modules {
@@ -244,7 +244,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			}
 			sdl2_configs << sdl2_image_config
 			libsdl2_image := libsdl2_image_node(sdl2_image_config) or {
-				return error(@FN + ': $err')
+				return error(@FN + ': ${err}')
 			}
 
 			libsdl2.add('tasks', libsdl2_image)
@@ -267,7 +267,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			}
 			sdl2_configs << sdl2_mixer_config
 			libsdl2_mixer := libsdl2_mixer_node(sdl2_mixer_config) or {
-				return error(@FN + ': $err')
+				return error(@FN + ': ${err}')
 			}
 
 			libsdl2.add('tasks', libsdl2_mixer)
@@ -279,7 +279,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
 				version: sdl2_ttf_version
-				work_dir: os.join_path(base_abo.work_dir, '$sdl2_ttf_version')
+				work_dir: os.join_path(base_abo.work_dir, '${sdl2_ttf_version}')
 			}
 			collect_libs << abo.path_product_libs('SDL2_ttf')
 
@@ -288,7 +288,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 				root: sdl2_ttf_home
 			}
 			sdl2_configs << sdl2_ttf_config
-			libsdl2_ttf := libsdl2_ttf_node(sdl2_ttf_config) or { return error(@FN + ': $err') }
+			libsdl2_ttf := libsdl2_ttf_node(sdl2_ttf_config) or { return error(@FN + ': ${err}') }
 
 			libsdl2.add('tasks', libsdl2_ttf)
 		}
@@ -296,10 +296,10 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		sdl_build.add('tasks', libsdl2)
 
 		mut v_build := AndroidNode{
-			id: 'V.$arch'
+			id: 'V.${arch}'
 			Node: &Node{
-				id: 'V.$arch'
-				note: 'Build V sources for $arch variant'
+				id: 'V.${arch}'
+				note: 'Build V sources for ${arch} variant'
 			}
 		}
 
@@ -309,13 +309,13 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 			abo: sdl2_abo
 			aco: aco
 		}
-		mut libv := libv_node(v_config) or { return error(@FN + ': $err') }
+		mut libv := libv_node(v_config) or { return error(@FN + ': ${err}') }
 
 		collect_libs << v_config.abo.path_product_libs(opt.lib_name)
 		v_build.add('dependencies', sdl_build)
 		v_build.add('tasks', libv)
 
-		v_build.build() or { return error(@FN + ': $err') }
+		v_build.build() or { return error(@FN + ': ${err}') }
 	}
 	return collect_libs
 }
@@ -332,9 +332,9 @@ fn ab_commit_hash() string {
 	mut hash := ''
 	git_exe := os.find_abs_path_of_executable('git') or { '' }
 	if git_exe != '' {
-		mut git_cmd := 'git -C "$exe_dir" rev-parse --short HEAD'
+		mut git_cmd := 'git -C "${exe_dir}" rev-parse --short HEAD'
 		$if windows {
-			git_cmd = 'git.exe -C "$exe_dir" rev-parse --short HEAD'
+			git_cmd = 'git.exe -C "${exe_dir}" rev-parse --short HEAD'
 		}
 		res := os.execute(git_cmd)
 		if res.exit_code == 0 {
@@ -345,7 +345,7 @@ fn ab_commit_hash() string {
 }
 
 fn version_full() string {
-	return '$exe_version $exe_git_hash'
+	return '${exe_version} ${exe_git_hash}'
 }
 
 fn version() string {
@@ -364,14 +364,14 @@ fn version() string {
 
 fn deploy(deploy_opt android.DeployOptions) {
 	android.deploy(deploy_opt) or {
-		eprintln('$cli.exe_short_name deployment didn\'t succeed.\n$err')
+		eprintln('${cli.exe_short_name} deployment didn\'t succeed.\n${err}')
 		if deploy_opt.kill_adb {
 			cli.kill_adb()
 		}
 		exit(1)
 	}
 	if deploy_opt.verbosity > 0 {
-		println('Deployed to $deploy_opt.device_id successfully')
+		println('Deployed to ${deploy_opt.device_id} successfully')
 	}
 	if deploy_opt.kill_adb {
 		cli.kill_adb()

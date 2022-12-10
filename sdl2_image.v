@@ -244,8 +244,8 @@ fn libjpeg_node(config SDL2ImageConfig) !&Node {
 		id: 'jpeg'
 		Node: &Node{
 			id: 'jpeg'
-			note: 'libjpeg .o to .a for $arch'
-			tags: ['lib', 'static', '$arch']
+			note: 'libjpeg .o to .a for ${arch}'
+			tags: ['lib', 'static', '${arch}']
 		}
 	}
 	a_build.attach_data(abo: abo)
@@ -254,8 +254,8 @@ fn libjpeg_node(config SDL2ImageConfig) !&Node {
 		id: 'jpeg'
 		Node: &Node{
 			id: 'jpeg'
-			note: 'libjpeg .c to .o for $arch'
-			tags: ['o', 'build', '$arch']
+			note: 'libjpeg .c to .o for ${arch}'
+			tags: ['o', 'build', '${arch}']
 		}
 	}
 	o_build.attach_data(abo: abo)
@@ -404,7 +404,7 @@ fn libwebp_node(config SDL2ImageConfig) !&Node {
 	dsp_dec_srcs := [
 		os.join_path(webp_src, 'dsp', 'alpha_processing.c'),
 		os.join_path(webp_src, 'dsp', 'alpha_processing_mips_dsp_r2.c'),
-		os.join_path(webp_src, 'dsp', 'alpha_processing_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'alpha_processing_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'alpha_processing_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'alpha_processing_sse41.c'),
 		os.join_path(webp_src, 'dsp', 'cpu.c'),
@@ -413,35 +413,35 @@ fn libwebp_node(config SDL2ImageConfig) !&Node {
 		os.join_path(webp_src, 'dsp', 'dec_mips32.c'),
 		os.join_path(webp_src, 'dsp', 'dec_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'dec_msa.c'),
-		os.join_path(webp_src, 'dsp', 'dec_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'dec_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'dec_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'dec_sse41.c'),
 		os.join_path(webp_src, 'dsp', 'filters.c'),
 		os.join_path(webp_src, 'dsp', 'filters_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'filters_msa.c'),
-		os.join_path(webp_src, 'dsp', 'filters_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'filters_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'filters_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'lossless.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_msa.c'),
-		os.join_path(webp_src, 'dsp', 'lossless_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'lossless_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'lossless_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'rescaler.c'),
 		os.join_path(webp_src, 'dsp', 'rescaler_mips32.c'),
 		os.join_path(webp_src, 'dsp', 'rescaler_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'rescaler_msa.c'),
-		os.join_path(webp_src, 'dsp', 'rescaler_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'rescaler_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'rescaler_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'upsampling.c'),
 		os.join_path(webp_src, 'dsp', 'upsampling_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'upsampling_msa.c'),
-		os.join_path(webp_src, 'dsp', 'upsampling_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'upsampling_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'upsampling_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'upsampling_sse41.c'),
 		os.join_path(webp_src, 'dsp', 'yuv.c'),
 		os.join_path(webp_src, 'dsp', 'yuv_mips32.c'),
 		os.join_path(webp_src, 'dsp', 'yuv_mips_dsp_r2.c'),
-		os.join_path(webp_src, 'dsp', 'yuv_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'yuv_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'yuv_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'yuv_sse41.c'),
 	]
@@ -450,20 +450,20 @@ fn libwebp_node(config SDL2ImageConfig) !&Node {
 		os.join_path(webp_src, 'dsp', 'cost.c'),
 		os.join_path(webp_src, 'dsp', 'cost_mips32.c'),
 		os.join_path(webp_src, 'dsp', 'cost_mips_dsp_r2.c'),
-		os.join_path(webp_src, 'dsp', 'cost_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'cost_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'cost_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'enc.c'),
 		os.join_path(webp_src, 'dsp', 'enc_mips32.c'),
 		os.join_path(webp_src, 'dsp', 'enc_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'enc_msa.c'),
-		os.join_path(webp_src, 'dsp', 'enc_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'enc_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'enc_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'enc_sse41.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_enc.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_enc_mips32.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_enc_mips_dsp_r2.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_enc_msa.c'),
-		os.join_path(webp_src, 'dsp', 'lossless_enc_neon.$neon'),
+		os.join_path(webp_src, 'dsp', 'lossless_enc_neon.${neon}'),
 		os.join_path(webp_src, 'dsp', 'lossless_enc_sse2.c'),
 		os.join_path(webp_src, 'dsp', 'lossless_enc_sse41.c'),
 		os.join_path(webp_src, 'dsp', 'ssim.c'),

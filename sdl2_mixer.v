@@ -58,7 +58,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 		flac_build := libflac_node(config)!
 
 		// Add all FLAC includes to SDL2_mixer's C -> .o build
-		if flac_o_build := flac_build.find_nearest(id: 'FLAC', tags: ['o', 'build', '$arch']) {
+		if flac_o_build := flac_build.find_nearest(id: 'FLAC', tags: ['o', 'build', '${arch}']) {
 			if includes := flac_o_build.items['includes'] {
 				for include_node in includes {
 					o_build.add_include(include_node.id, ['c', 'cpp'])!
@@ -75,7 +75,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 			ogg_build := libogg_node(config)!
 
 			// Add all ogg includes to SDL2_mixer's C -> .o build
-			if ogg_o_build := ogg_build.find_nearest(id: 'ogg', tags: ['o', 'build', '$arch']) {
+			if ogg_o_build := ogg_build.find_nearest(id: 'ogg', tags: ['o', 'build', '${arch}']) {
 				ogg_o_build_an := AndroidNode{
 					id: ogg_o_build.id
 					Node: ogg_o_build
@@ -107,7 +107,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 		ogg_build := libogg_node(config)!
 
 		// Add all ogg includes to SDL2_mixer's C -> .o build
-		if ogg_o_build := ogg_build.find_nearest(id: 'ogg', tags: ['o', 'build', '$arch']) {
+		if ogg_o_build := ogg_build.find_nearest(id: 'ogg', tags: ['o', 'build', '${arch}']) {
 			if includes := ogg_o_build.items['includes'] {
 				for include_node in includes {
 					o_build.add_include(include_node.id, ['c', 'cpp'])!
@@ -129,7 +129,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 			tags: [
 				'o',
 				'build',
-				'$arch',
+				'${arch}',
 			]
 		)
 		{
@@ -153,7 +153,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 		mpg123_build := libmpg123_node(config)!
 
 		// Add lib's includes to SDL2_mixer's C -> .o build
-		if mpg123_o_build := mpg123_build.find_nearest(id: 'mpg123', tags: ['o', 'build', '$arch']) {
+		if mpg123_o_build := mpg123_build.find_nearest(id: 'mpg123', tags: ['o', 'build', '${arch}']) {
 			if includes := mpg123_o_build.items['includes'] {
 				for include_node in includes {
 					o_build.add_include(include_node.id, ['c', 'cpp'])!
@@ -178,7 +178,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 		// Add lib'sincludes to SDL2_mixer's C -> .o build
 		if modplug_o_build := modplug_build.find_nearest(
 			id: 'modplug'
-			tags: ['o', 'build', '$arch']
+			tags: ['o', 'build', '${arch}']
 		)
 		{
 			if includes := modplug_o_build.items['includes'] {
@@ -200,7 +200,11 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 		timidity_build := libtimidity_node(config)!
 
 		// Add lib'sincludes to SDL2_mixer's C -> .o build
-		if lib_o_build := timidity_build.find_nearest(id: 'timidity', tags: ['o', 'build', '$arch']) {
+		if lib_o_build := timidity_build.find_nearest(
+			id: 'timidity'
+			tags: ['o', 'build', '${arch}']
+		)
+		{
 			if includes := lib_o_build.items['includes'] {
 				for include_node in includes {
 					o_build.add_include(include_node.id, ['c', 'cpp'])!

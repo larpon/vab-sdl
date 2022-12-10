@@ -20,7 +20,7 @@ fn libsdl2_node(config SDL2Config) !&Node {
 
 	// TODO test *all* versions
 	if version != '2.0.20' {
-		return error('$err_sig: TODO only 2.0.20 is currently supported (not "$version")')
+		return error('${err_sig}: TODO only 2.0.20 is currently supported (not "${version}")')
 	}
 
 	mut lib := new_node('SDL2', .build_dynamic_lib, arch, ['cpp'])
