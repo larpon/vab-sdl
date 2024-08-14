@@ -66,7 +66,7 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 		// lib_name: vbo.lib_name
 		// api_level: abo.api_level
 		// min_sdk_version: abo.min_sdk_version
-    gles_version: 3
+		gles_version: 3
 	}
 
 	return acop
@@ -119,7 +119,7 @@ fn libv_node(config VSDL2Config) !&Node {
 		}
 	}
 
-	//mut ldflags := ['-landroid', '-llog', '-lc', '-lm', '-lEGL', '-lGLESv1_CM', '-lGLESv2']
+	// mut ldflags := ['-landroid', '-llog', '-lc', '-lm', '-lEGL', '-lGLESv1_CM', '-lGLESv2']
 	mut ldflags := ['-landroid', '-llog', '-lc', '-lm', '-lEGL', '-lGLESv1_CM', '-lGLESv3']
 	for flag in ldflags {
 		lib.add_flag(flag, ['c', 'cpp'])!
@@ -136,7 +136,9 @@ fn compile_v_to_c(mut n Node) ! {
 	if 'v_config' !in n.data.keys() {
 		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
-	v_config := unsafe { &VSDL2Config(n.data['v_config'] or {panic('${err_sig}: no data["v_config"] in node ${n.id}')}) }
+	v_config := unsafe { &VSDL2Config(n.data['v_config'] or {
+		panic('${err_sig}: no data["v_config"] in node ${n.id}')
+	}) }
 	// sdl2_configs := v_config.sdl2_configs
 	abo := v_config.abo
 
@@ -157,7 +159,9 @@ fn collect_v_c_o_files(mut n Node) ! {
 	if 'v_config' !in n.data.keys() {
 		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
-	v_config := unsafe { &VSDL2Config(n.data['v_config'] or {panic('${err_sig}: no data["v_config"] in node ${n.id}')}) }
+	v_config := unsafe { &VSDL2Config(n.data['v_config'] or {
+		panic('${err_sig}: no data["v_config"] in node ${n.id}')
+	}) }
 	// sdl2_configs := v_config.sdl2_configs
 	abo := v_config.abo
 	arch := abo.arch

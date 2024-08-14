@@ -25,7 +25,7 @@ fn main() {
 	// Collect user flags in an extended manner.
 	// Start with defaults -> overwrite by VAB_FLAGS -> overwrite by commandline flags -> extend by .vab file entries.
 	mut opt := cli.Options{}
-	mut fp := &flag.FlagParser(unsafe{nil})
+	mut fp := &flag.FlagParser(unsafe { nil })
 
 	opt = cli.options_from_env(opt) or {
 		eprintln('Error while parsing `VAB_FLAGS`: ${err}')
@@ -161,7 +161,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 	// Dump meta data from V
 	mut v_flags := opt.v_flags.clone()
 
-  v_flags << '-d sdl_memory_no_gc'
+	v_flags << '-d sdl_memory_no_gc'
 
 	if opt.verbosity > 0 {
 		println('Analyzing V source')
@@ -196,12 +196,12 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 
 	mut sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
 	sdl2_home = os.getenv_opt('SDL_HOME') or { sdl2_home }
-  
+
 	sdl2_version := os.file_name(sdl2_home).all_after('SDL2-') // TODO FIXME Detect version in V code
 
-  if opt.verbosity > 1 {
+	if opt.verbosity > 1 {
 		println('Using SDL2 at "${sdl2_home}" detected version: ${sdl2_version}')
-  }
+	}
 
 	os.rmdir_all(product_cache_path()) or {}
 
