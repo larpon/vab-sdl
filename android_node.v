@@ -23,7 +23,7 @@ fn product_cache_path() string {
 pub struct AndroidBuildOptions {
 pub mut:
 	version   string = '0.0.0' // version modifier of what's being built
-	verbosity int    // level of verbosity
+	verbosity int // level of verbosity
 	parallel  bool = true
 	cache     bool = true
 	// env
@@ -141,9 +141,9 @@ pub fn new_node(id string, kind NodeKind, arch string, tags []string) AndroidNod
 	f_tags << 'build'
 	f_tags << arch
 	mut node := AndroidNode{
-		id: id
+		id:   id
 		Node: &Node{
-			id: id
+			id:   id
 			note: '${pre_id}${id} ${comment} for ${arch}'
 			tags: f_tags
 		}
@@ -151,7 +151,7 @@ pub fn new_node(id string, kind NodeKind, arch string, tags []string) AndroidNod
 
 	if kind == .build_dynamic_lib {
 		mut exports := &Node{
-			id: '${node.id}.exports'
+			id:   '${node.id}.exports'
 			note: 'lib${node.id} exports for ${arch}'
 			tags: ['exports', '${arch}']
 		}
@@ -161,19 +161,18 @@ pub fn new_node(id string, kind NodeKind, arch string, tags []string) AndroidNod
 	return node
 }
 
-[params]
 pub struct AndroidNode {
 	Node
 }
 
-[params]
+@[params]
 pub struct AndroidNodeData {
 	abo AndroidBuildOptions
 }
 
 fn (an &AndroidNode) from_node(node Node) AndroidNode {
 	return AndroidNode{
-		id: node.id
+		id:   node.id
 		Node: node
 	}
 }
@@ -192,7 +191,7 @@ pub fn (an AndroidNode) fetch_data() !AndroidNodeData {
 		if isnil(node_data) {
 			return error('${err_sig}: data field for ${an.id} is nil')
 		}
-		heap_and := &AndroidNodeData(node_data)
+		heap_and := unsafe { &AndroidNodeData(node_data) }
 		stack_and := AndroidNodeData{
 			abo: heap_and.abo
 		}
@@ -465,9 +464,9 @@ fn (an &AndroidNode) build_src_to_o() ! {
 				os.join_path(out_dir, os.file_name(source_file).all_before_last('.') + '.o.d"')
 
 			ndk_flag_res := ndk.compiler_flags_from_config(bo.ndk_version,
-				arch: arch
-				lang: ndk_compiler_type
-				debug: !bo.is_prod
+				arch:                    arch
+				lang:                    ndk_compiler_type
+				debug:                   !bo.is_prod
 				allow_undefined_symbols: true // TODO workaround *new* mysterious "error: implicit declaration of function 'glVertexAttribDivisorANGLE' is invalid in C99 [-Werror,-Wimplicit-function-declaration]"
 			)!
 			build_cmd := [
@@ -727,9 +726,9 @@ fn (an &AndroidNode) build_lib_shared() ! {
 	mut jobs := []vab_util.ShellJob{}
 
 	ndk_flag_res := ndk.compiler_flags_from_config(bo.ndk_version,
-		arch: arch
-		lang: ndk_compiler_type
-		debug: !bo.is_prod
+		arch:         arch
+		lang:         ndk_compiler_type
+		debug:        !bo.is_prod
 		cpp_features: ['no-rtti', 'no-exceptions']
 	)!
 

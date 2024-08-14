@@ -2,10 +2,10 @@ module main
 
 type Fn = fn (mut node Node) !
 
-[heap; params]
+@[heap]
 pub struct Node {
 pub mut:
-	id     string             [required]
+	id     string @[required]
 	parent &Node = unsafe { nil }
 	items  map[string][]&Node
 	note   string
@@ -19,7 +19,7 @@ pub enum SearchDirection {
 	down
 }
 
-[params]
+@[params]
 pub struct NodeSearchCriteria {
 pub:
 	id   string

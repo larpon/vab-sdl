@@ -147,7 +147,8 @@ fn libsdl2_node(config SDL2Config) !&Node {
 	}
 	flags.clear()
 
-	flags << '-ldl -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid'.split(' ')
+	// TODO sokol mess it is GLESv3 now, old: flags << '-ldl -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid'.split(' ')
+	flags << '-ldl -lGLESv1_CM -lGLESv3 -lOpenSLES -llog -landroid'.split(' ')
 	for flag in flags {
 		lib.add_flag(flag, [])!
 	}
@@ -188,7 +189,7 @@ fn libcpufeatures_node(cpuf_root string, abo AndroidBuildOptions) !&Node {
 	o_build.attach_data(abo: abo)
 
 	o_build.add('includes', as_heap(
-		id: cpuf_root
+		id:   cpuf_root
 		note: 'C header include'
 		tags: [
 			'c',
@@ -207,7 +208,7 @@ fn libcpufeatures_node(cpuf_root string, abo AndroidBuildOptions) !&Node {
 	mut flags := ['-Wall', '-Wextra', '-Werror']
 	for flag in flags {
 		o_build.add('flags', as_heap(
-			id: flag
+			id:   flag
 			note: 'build flag'
 			tags: ['c', 'cpp', 'flag', 'warning']
 		))

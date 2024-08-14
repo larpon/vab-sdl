@@ -77,7 +77,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 			// Add all ogg includes to SDL2_mixer's C -> .o build
 			if ogg_o_build := ogg_build.find_nearest(id: 'ogg', tags: ['o', 'build', '${arch}']) {
 				ogg_o_build_an := AndroidNode{
-					id: ogg_o_build.id
+					id:   ogg_o_build.id
 					Node: ogg_o_build
 				}
 				vorbis_root := os.join_path(root, 'external', 'libvorbis-1.3.5')
@@ -125,7 +125,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 
 		// Add lib's includes to SDL2_mixer's C -> .o build
 		if vorbisidec_o_build := vorbisidec_build.find_nearest(
-			id: 'vorbisidec'
+			id:   'vorbisidec'
 			tags: [
 				'o',
 				'build',
@@ -177,7 +177,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 
 		// Add lib'sincludes to SDL2_mixer's C -> .o build
 		if modplug_o_build := modplug_build.find_nearest(
-			id: 'modplug'
+			id:   'modplug'
 			tags: ['o', 'build', '${arch}']
 		)
 		{
@@ -201,7 +201,7 @@ fn libsdl2_mixer_node(config SDL2MixerConfig) !&Node {
 
 		// Add lib'sincludes to SDL2_mixer's C -> .o build
 		if lib_o_build := timidity_build.find_nearest(
-			id: 'timidity'
+			id:   'timidity'
 			tags: ['o', 'build', '${arch}']
 		)
 		{
@@ -308,7 +308,7 @@ fn libogg_node(config SDL2MixerConfig) !&Node {
 
 	includes := [
 		os.join_path(ogg_root, 'include'),
-		os.join_path(ogg_root, 'android')
+		os.join_path(ogg_root, 'android'),
 		//		os.join_path(vorbis_root,'include'),
 	]
 

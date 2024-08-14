@@ -241,9 +241,9 @@ fn libjpeg_node(config SDL2ImageConfig) !&Node {
 	jpg_root := os.join_path(root, 'external', 'jpeg-9b')
 
 	mut a_build := AndroidNode{
-		id: 'jpeg'
+		id:   'jpeg'
 		Node: &Node{
-			id: 'jpeg'
+			id:   'jpeg'
 			note: 'libjpeg .o to .a for ${arch}'
 			tags: ['lib', 'static', '${arch}']
 		}
@@ -251,9 +251,9 @@ fn libjpeg_node(config SDL2ImageConfig) !&Node {
 	a_build.attach_data(abo: abo)
 
 	mut o_build := &AndroidNode{
-		id: 'jpeg'
+		id:   'jpeg'
 		Node: &Node{
-			id: 'jpeg'
+			id:   'jpeg'
 			note: 'libjpeg .c to .o for ${arch}'
 			tags: ['o', 'build', '${arch}']
 		}
@@ -337,7 +337,7 @@ fn libwebp_node(config SDL2ImageConfig) !&Node {
 	webp_src := os.join_path(webp_root, 'src')
 
 	mut tasks := &Node{
-		id: 'build-all-of-libwebp'
+		id:   'build-all-of-libwebp'
 		note: 'build all of libwebp'
 		tags: ['container']
 	}

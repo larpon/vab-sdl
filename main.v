@@ -7,27 +7,25 @@ import vab.android
 import vab.android.ndk
 // import vab.android.sdk
 
-const (
-	exe_version            = version()
-	exe_name               = os.file_name(os.executable())
-	exe_short_name         = os.file_name(os.executable()).replace('.exe', '')
-	exe_dir                = os.dir(os.real_path(os.executable()))
-	exe_description        = '${exe_short_name}
+const exe_version = version()
+const exe_name = os.file_name(os.executable())
+const exe_short_name = os.file_name(os.executable()).replace('.exe', '')
+const exe_dir = os.dir(os.real_path(os.executable()))
+const exe_description = '${exe_short_name}
 compile SDL for Android.
 '
-	exe_git_hash           = ab_commit_hash()
-	work_directory         = ab_work_dir()
-	cache_directory        = ab_cache_dir()
-	accepted_input_files   = ['.v', '.apk', '.aab']
-	supported_sdl_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
-		'2.0.20', '2.0.22', '2.24.0']
-)
+const exe_git_hash = ab_commit_hash()
+const work_directory = ab_work_dir()
+const cache_directory = ab_cache_dir()
+const accepted_input_files = ['.v', '.apk', '.aab']
+const supported_sdl_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
+	'2.0.20', '2.0.22', '2.24.0']
 
 fn main() {
 	// Collect user flags in an extended manner.
 	// Start with defaults -> overwrite by VAB_FLAGS -> overwrite by commandline flags -> extend by .vab file entries.
 	mut opt := cli.Options{}
-	mut fp := &flag.FlagParser(0)
+	mut fp := &flag.FlagParser(unsafe{nil})
 
 	opt = cli.options_from_env(opt) or {
 		eprintln('Error while parsing `VAB_FLAGS`: ${err}')
@@ -137,9 +135,9 @@ fn main() {
 		assets_extra: [
 			os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
 		] // base_abo.assets_extra
-		libs_extra: libs_extra // base_abo.libs_extra
-		keystore: keystore
-		base_files: os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
+		libs_extra:     libs_extra // base_abo.libs_extra
+		keystore:       keystore
+		base_files:     os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
 		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path
 	}
 	android.package(pck_opt) or {
@@ -163,6 +161,8 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 	// Dump meta data from V
 	mut v_flags := opt.v_flags.clone()
 
+  v_flags << '-d sdl_memory_no_gc'
+
 	if opt.verbosity > 0 {
 		println('Analyzing V source')
 		if opt.v_flags.len > 0 {
@@ -172,10 +172,10 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 
 	v_meta_opt := android.VCompileOptions{
 		verbosity: opt.verbosity
-		cache: opt.cache
-		flags: v_flags
-		work_dir: os.join_path(opt.work_dir, 'v')
-		input: opt.input
+		cache:     opt.cache
+		flags:     v_flags
+		work_dir:  os.join_path(opt.work_dir, 'v')
+		input:     opt.input
 	}
 
 	v_meta_dump := android.v_dump_meta(v_meta_opt) or { return error(@FN + ': ${err}') }
@@ -187,15 +187,21 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 
 	// Construct *base* build options
 	base_abo := AndroidBuildOptions{
-		verbosity: opt.verbosity
-		cache: opt.cache
-		work_dir: opt.work_dir
+		verbosity:   opt.verbosity
+		cache:       opt.cache
+		work_dir:    opt.work_dir
 		ndk_version: opt.ndk_version
-		api_level: opt.api_level // sdk.default_api_level
+		api_level:   opt.api_level // sdk.default_api_level
 	}
 
-	sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
+	mut sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
+	sdl2_home = os.getenv_opt('SDL_HOME') or { sdl2_home }
+  
 	sdl2_version := os.file_name(sdl2_home).all_after('SDL2-') // TODO FIXME Detect version in V code
+
+  if opt.verbosity > 1 {
+		println('Using SDL2 at "${sdl2_home}" detected version: ${sdl2_version}')
+  }
 
 	os.rmdir_all(product_cache_path()) or {}
 
@@ -204,7 +210,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		mut sdl2_configs := []SDL2ConfigType{}
 
 		mut sdl_build := &Node{
-			id: 'SDL2.all.${arch}'
+			id:   'SDL2.all.${arch}'
 			note: 'Build SDL2 and SDL2 modules for ${arch} variant'
 		}
 
@@ -214,15 +220,15 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		min_api_level_available := apis[arch][0] // TODO
 		mut sdl2_abo := AndroidBuildOptions{
 			...base_abo
-			version: sdl2_version
-			arch: arch
+			version:   sdl2_version
+			arch:      arch
 			api_level: min_api_level_available
-			work_dir: os.join_path(base_abo.work_dir)
+			work_dir:  os.join_path(base_abo.work_dir)
 		}
 		collect_libs << sdl2_abo.path_product_libs('SDL2')
 
 		sdl2_config := SDL2Config{
-			abo: sdl2_abo
+			abo:  sdl2_abo
 			root: sdl2_home
 		}
 		mut libsdl2 := libsdl2_node(sdl2_config) or { return error(@FN + ': ${err}') }
@@ -234,12 +240,12 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
-				version: sdl2_image_version
+				version:  sdl2_image_version
 				work_dir: os.join_path(base_abo.work_dir)
 			}
 			collect_libs << abo.path_product_libs('SDL2_image')
 			sdl2_image_config := SDL2ImageConfig{
-				abo: abo
+				abo:  abo
 				root: sdl2_image_home
 			}
 			sdl2_configs << sdl2_image_config
@@ -255,14 +261,14 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
-				version: sdl2_mixer_version
+				version:  sdl2_mixer_version
 				work_dir: os.join_path(base_abo.work_dir)
 			}
 			collect_libs << abo.path_product_libs('SDL2_mixer')
 			collect_libs << abo.path_product_libs('mpg123')
 
 			sdl2_mixer_config := SDL2MixerConfig{
-				abo: abo
+				abo:  abo
 				root: sdl2_mixer_home
 			}
 			sdl2_configs << sdl2_mixer_config
@@ -278,13 +284,13 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
-				version: sdl2_ttf_version
+				version:  sdl2_ttf_version
 				work_dir: os.join_path(base_abo.work_dir, '${sdl2_ttf_version}')
 			}
 			collect_libs << abo.path_product_libs('SDL2_ttf')
 
 			sdl2_ttf_config := SDL2TTFConfig{
-				abo: abo
+				abo:  abo
 				root: sdl2_ttf_home
 			}
 			sdl2_configs << sdl2_ttf_config
@@ -296,9 +302,9 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		sdl_build.add('tasks', libsdl2)
 
 		mut v_build := AndroidNode{
-			id: 'V.${arch}'
+			id:   'V.${arch}'
 			Node: &Node{
-				id: 'V.${arch}'
+				id:   'V.${arch}'
 				note: 'Build V sources for ${arch} variant'
 			}
 		}
@@ -306,8 +312,8 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		aco := opt.as_android_compile_options()
 		v_config := VSDL2Config{
 			sdl2_configs: sdl2_configs
-			abo: sdl2_abo
-			aco: aco
+			abo:          sdl2_abo
+			aco:          aco
 		}
 		mut libv := libv_node(v_config) or { return error(@FN + ': ${err}') }
 
