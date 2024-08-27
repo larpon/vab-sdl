@@ -52,7 +52,7 @@ pub fn (mut n Node) add(item string, node &Node) {
 	unsafe {
 		node.parent = n
 	}
-	n.items[item] << node
+	unsafe { n.items[item] << node }
 }
 
 pub fn (n &Node) is_leaf() bool {

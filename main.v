@@ -91,6 +91,7 @@ fn main() {
 	opt.activity_name = 'VSDLActivity'
 	opt.package_id = 'io.v.android.ex'
 	opt.log_tags << ['SDL', 'SDL/APP']
+	opt.v_flags << '-d sdl_memory_no_gc'
 	mut libs_extra := compile_sdl_and_v(opt) or { panic(err) }
 	//
 	//////////////////////////////////////////////
@@ -138,7 +139,7 @@ fn main() {
 		libs_extra:     libs_extra // base_abo.libs_extra
 		keystore:       keystore
 		base_files:     os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
-		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path
+		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path / dynamically figure out via dir in SDL2 source pack
 	}
 	android.package(pck_opt) or {
 		eprintln("Packaging didn't succeed.\n${err}")
@@ -159,10 +160,6 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 	mut collect_libs := []string{}
 
 	// Dump meta data from V
-	mut v_flags := opt.v_flags.clone()
-
-	v_flags << '-d sdl_memory_no_gc'
-
 	if opt.verbosity > 0 {
 		println('Analyzing V source')
 		if opt.v_flags.len > 0 {
@@ -173,7 +170,7 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 	v_meta_opt := android.VCompileOptions{
 		verbosity: opt.verbosity
 		cache:     opt.cache
-		flags:     v_flags
+		flags:     opt.v_flags
 		work_dir:  os.join_path(opt.work_dir, 'v')
 		input:     opt.input
 	}

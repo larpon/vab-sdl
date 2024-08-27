@@ -204,7 +204,7 @@ pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string)
 	err_sig := @FN
 	node := &an.Node
 	if 'exports' in node.items.keys() {
-		mut exports_node := an.from_node(node.items['exports'].first())
+		mut exports_node := an.from_node(node.items['exports'] or { return error('${err_sig}: ${an.id} has no "exports" entry in items') }.first())
 		if kind == 'includes' {
 			exports_node.add_include(entry, tags)!
 		} else {
@@ -212,7 +212,7 @@ pub fn (mut an AndroidNode) add_export(kind string, entry string, tags []string)
 			exports_node.add('includes', e_node)
 		}
 	} else {
-		return error('${err_sig}: ${an.id} has no exports entry in items')
+		return error('${err_sig}: ${an.id} has no "exports" entry in items')
 	}
 }
 
