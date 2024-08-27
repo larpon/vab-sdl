@@ -136,9 +136,11 @@ fn compile_v_to_c(mut n Node) ! {
 	if 'v_config' !in n.data.keys() {
 		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
-	v_config := unsafe { &VSDL2Config(n.data['v_config'] or {
-		panic('${err_sig}: no data["v_config"] in node ${n.id}')
-	}) }
+	v_config := unsafe {
+		&VSDL2Config(n.data['v_config'] or {
+			panic('${err_sig}: no data["v_config"] in node ${n.id}')
+		})
+	}
 	// sdl2_configs := v_config.sdl2_configs
 	abo := v_config.abo
 
@@ -159,9 +161,11 @@ fn collect_v_c_o_files(mut n Node) ! {
 	if 'v_config' !in n.data.keys() {
 		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
-	v_config := unsafe { &VSDL2Config(n.data['v_config'] or {
-		panic('${err_sig}: no data["v_config"] in node ${n.id}')
-	}) }
+	v_config := unsafe {
+		&VSDL2Config(n.data['v_config'] or {
+			panic('${err_sig}: no data["v_config"] in node ${n.id}')
+		})
+	}
 	// sdl2_configs := v_config.sdl2_configs
 	abo := v_config.abo
 	arch := abo.arch
