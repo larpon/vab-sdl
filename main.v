@@ -92,7 +92,13 @@ fn main() {
 	opt.package_id = 'io.v.android.ex'
 	opt.log_tags << ['SDL', 'SDL/APP']
 	opt.v_flags << '-d sdl_memory_no_gc'
-	mut libs_extra := compile_sdl_and_v(opt) or { panic(err) }
+	opt.libs_extra << compile_sdl_and_v(opt) or { panic(err) }
+	opt.assets_extra << [
+		os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
+	]
+	package_base_files := os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms',
+		'android')
+	opt.package_overrides_path = os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path / dynamically figure out via dir in SDL2 source pack
 	//
 	//////////////////////////////////////////////
 
@@ -133,13 +139,8 @@ fn main() {
 	apo := opt.as_android_package_options()
 	pck_opt := android.PackageOptions{
 		...apo
-		assets_extra: [
-			os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
-		] // base_abo.assets_extra
-		libs_extra:     libs_extra // base_abo.libs_extra
-		keystore:       keystore
-		base_files:     os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms', 'android')
-		overrides_path: os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path / dynamically figure out via dir in SDL2 source pack
+		keystore:   keystore
+		base_files: package_base_files
 	}
 	android.package(pck_opt) or {
 		eprintln("Packaging didn't succeed.\n${err}")
