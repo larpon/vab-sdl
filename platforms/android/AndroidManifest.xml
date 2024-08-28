@@ -67,7 +67,7 @@
          An example Java class can be found in README-android.md
     -->
     <application android:label="@string/v_app_name"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/icon"
         android:allowBackup="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
         android:hardwareAccelerated="true" >
@@ -75,7 +75,7 @@
         <!-- Example of setting SDL hints from AndroidManifest.xml:
         <meta-data android:name="SDL_ENV.SDL_ACCELEROMETER_AS_JOYSTICK" android:value="0"/>
          -->
-     
+ 
         <!--
         android:preferMinimalPostProcessing="true" // Available with API level >= 30. Can be set on <activity> to minimize refresh latency (e.g. good for games)
         // TODO: NOPE <uses-library android:name="org.libsdl.app" />
