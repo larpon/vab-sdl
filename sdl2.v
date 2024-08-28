@@ -1,13 +1,72 @@
 module main
 
 import os
+import semver
 import vab.android.ndk
 
 type SDL2ConfigType = SDL2Config | SDL2ImageConfig | SDL2MixerConfig | SDL2TTFConfig
 
+@[noinit]
+struct SDL2Source {
+	root    string // root of the SDL2 source distribution
+	version string
+}
+
+fn (s2s &SDL2Source) path_android_project() !string {
+	return os.join_path(s2s.root, 'android-project')
+}
+
+fn (s2s &SDL2Source) path_android_base_files() !string {
+	return os.join_path(s2s.path_android_project()!, 'app', 'src', 'main')
+}
+
+fn (s2s &SDL2Source) path_android_java_sources() !string {
+	return os.join_path(s2s.path_android_base_files()!, 'java')
+}
+
+fn SDL2Source.make(sdl2_src_path string) !SDL2Source {
+	root := sdl2_src_path.trim_right('/\\')
+	if !os.is_dir(root) {
+		return error('${@STRUCT}.${@FN}:${@LINE}: "${sdl2_src_path}" is not a directory')
+	}
+	if !os.is_file(os.join_path(root, 'README-SDL.txt')) {
+		return error('${@STRUCT}.${@FN}:${@LINE}: could not identify "${sdl2_src_path}" as an SDL2 source root (missing README-SDL.txt)')
+	}
+	sdl_version_h := os.join_path(root, 'include', 'SDL_version.h')
+	if !os.is_file(sdl_version_h) {
+		return error('${@STRUCT}.${@FN}:${@LINE}: could not find file "${sdl_version_h}" to indentify SDL2\'s version')
+	}
+	sdl_version_h_lines := os.read_lines(sdl_version_h) or {
+		return error('${@STRUCT}.${@FN}:${@LINE}: could not read lines in file "${sdl_version_h}" to indentify SDL2\'s version (${err})')
+	}
+	mut v_major := 0
+	mut v_minor := 0
+	mut v_patch := 0
+	for line in sdl_version_h_lines {
+		if line.contains('#define') {
+			if line.contains('SDL_MAJOR_VERSION') {
+				v_major = line.all_after('SDL_MAJOR_VERSION').trim_space().int()
+			}
+			if line.contains('SDL_MINOR_VERSION') {
+				v_minor = line.all_after('SDL_MINOR_VERSION').trim_space().int()
+			}
+			if line.contains('SDL_PATCHLEVEL') {
+				v_patch = line.all_after('SDL_PATCHLEVEL').trim_space().int()
+			}
+		}
+	}
+	if v_major == 0 && v_minor == 0 && v_patch == 0 {
+		return error('${@STRUCT}.${@FN}:${@LINE}: could not determine SDL2\'s version from file "${sdl_version_h}" (obtained so far: ${v_major}.${v_minor}.${v_patch})')
+	}
+	return SDL2Source{
+		root:    root
+		version: '${v_major}.${v_minor}.${v_patch}'
+	}
+}
+
 struct SDL2Config {
-	abo  AndroidBuildOptions
-	root string
+	abo AndroidBuildOptions
+	src SDL2Source
 }
 
 fn libsdl2_node(config SDL2Config) !&Node {
@@ -15,12 +74,20 @@ fn libsdl2_node(config SDL2Config) !&Node {
 
 	abo := config.abo
 	arch := abo.arch
-	root := config.root
-	version := abo.version
+	root := config.src.root
+	version := config.src.version
 
-	// TODO test *all* versions
-	if version != '2.0.20' {
-		return error('${err_sig}: TODO only 2.0.20 is currently supported (not "${version}")')
+	wip_not_supported := ['2.0.8', '2.0.9', '2.0.10', '2.0.12'] // GOAL: all in supported_sdl2_versions
+	if version in wip_not_supported {
+		return error('${err_sig}: versions ${wip_not_supported} is currently *not* supported (or WIP). Try with a newer version of SDL2"')
+	}
+
+	if version !in supported_sdl2_versions {
+		return error('${err_sig}: only versions ${supported_sdl2_versions} is currently supported (not "${version}")')
+	}
+
+	sem_version := semver.from(version) or {
+		return error('${err_sig}: could not convert SDL2 version ${version} to semantic version (semver)')
 	}
 
 	mut lib := new_node('SDL2', .build_dynamic_lib, arch, ['cpp'])
@@ -42,11 +109,21 @@ fn libsdl2_node(config SDL2Config) !&Node {
 	src := os.join_path(root, 'src')
 
 	mut collect_paths := [src]
+	if sem_version.satisfies('>=2.0.14') {
+		collect_paths << os.join_path(src, 'joystick', 'virtual')
+		collect_paths << os.join_path(src, 'locale')
+		collect_paths << os.join_path(src, 'locale', 'android')
+		collect_paths << os.join_path(src, 'misc')
+		collect_paths << os.join_path(src, 'misc', 'android')
+	}
+	if sem_version.satisfies('>=2.0.16') {
+		collect_paths << os.join_path(src, 'audio', 'aaudio')
+		collect_paths << os.join_path(src, 'render', 'vitagxm')
+	}
 	collect_paths << [
 		os.join_path(src, 'audio'),
 		os.join_path(src, 'audio', 'android'),
 		os.join_path(src, 'audio', 'dummy'),
-		os.join_path(src, 'audio', 'aaudio'),
 		os.join_path(src, 'audio', 'openslES'),
 		os.join_path(src, 'core', 'android'),
 		os.join_path(src, 'cpuinfo'),
@@ -59,12 +136,7 @@ fn libsdl2_node(config SDL2Config) !&Node {
 		os.join_path(src, 'joystick'),
 		os.join_path(src, 'joystick', 'android'),
 		os.join_path(src, 'joystick', 'hidapi'),
-		os.join_path(src, 'joystick', 'virtual'),
 		os.join_path(src, 'loadso', 'dlopen'),
-		os.join_path(src, 'locale'),
-		os.join_path(src, 'locale', 'android'),
-		os.join_path(src, 'misc'),
-		os.join_path(src, 'misc', 'android'),
 		os.join_path(src, 'power'),
 		os.join_path(src, 'power', 'android'),
 		os.join_path(src, 'filesystem', 'android'),
@@ -80,7 +152,6 @@ fn libsdl2_node(config SDL2Config) !&Node {
 		os.join_path(src, 'render', 'opengles2'),
 		os.join_path(src, 'render', 'psp'),
 		os.join_path(src, 'render', 'software'),
-		os.join_path(src, 'render', 'vitagxm'),
 		//
 		os.join_path(src, 'stdlib'),
 		os.join_path(src, 'thread'),
@@ -92,10 +163,14 @@ fn libsdl2_node(config SDL2Config) !&Node {
 		os.join_path(src, 'video', 'yuv2rgb'),
 		os.join_path(src, 'test'),
 	]
+	mut collect_cpp_paths := []string{}
 
-	mut collect_cpp_paths := [
-		os.join_path(src, 'hidapi', 'android'),
-	]
+	if sem_version.satisfies('>=2.0.18') {
+		if abo.verbosity > 1 {
+			eprintln('Adding ${os.join_path(src, 'hidapi', 'android')} to C++ source collecting')
+		}
+		collect_cpp_paths << os.join_path(src, 'hidapi', 'android')
+	}
 
 	// Collect source files
 	mut c_files := []string{}
@@ -167,6 +242,23 @@ fn libsdl2_node(config SDL2Config) !&Node {
 
 	lib.add('dependencies', cpuf_build)
 
+	if sem_version.satisfies('<=2.0.16') {
+		lib.add_link_lib('hidapi', .dynamic, arch, [])!
+
+		hidapi_build := libhidapi_node(config)!
+
+		// Add lib's includes to SDL2's C -> .o build
+		if hidapi_o_build := hidapi_build.find_nearest(id: 'hidapi', tags: ['o', 'build', '${arch}']) {
+			if hidapi_includes := hidapi_o_build.items['includes'] {
+				for hidapi_include_node in hidapi_includes {
+					o_build.add_include(hidapi_include_node.id, ['c', 'cpp'])!
+				}
+			}
+		}
+
+		lib.add('dependencies', hidapi_build)
+	}
+
 	return &lib.Node
 }
 
@@ -217,4 +309,63 @@ fn libcpufeatures_node(cpuf_root string, abo AndroidBuildOptions) !&Node {
 
 	a_build.add('dependencies', &o_build.Node)
 	return &a_build.Node
+}
+
+fn libhidapi_node(config SDL2Config) !&Node {
+	err_sig := @MOD + '.' + @FN
+
+	abo := config.abo
+	arch := abo.arch
+	root := config.src.root
+	version := config.src.version
+
+	sem_version := semver.from(version) or {
+		return error('${err_sig}: could not convert SDL2 version ${version} to semantic version (semver)')
+	}
+
+	if !sem_version.satisfies('<=2.0.16') {
+		return error('${err_sig}: only versions <= 2.0.16 is currently supported (not "${version}")')
+	}
+
+	hidapi_root := os.join_path(root, 'src', 'hidapi')
+	libhidapi_android_src := os.join_path(hidapi_root, 'android')
+
+	mut so_build := new_node('hidapi', .build_dynamic_lib, arch, [])
+	so_build.attach_data(abo: abo)
+
+	mut o_build := new_node('hidapi', .build_src_to_o, arch, [])
+	o_build.attach_data(abo: abo)
+
+	so_build.add('dependencies', &o_build.Node)
+
+	// o_build.add_flag('-Wno-duplicate-decl-specifier',['c','cpp'])!
+
+	includes := [
+		os.join_path(hidapi_root, 'hidapi'),
+	]
+
+	for include in includes {
+		o_build.add_include(include, ['c', 'cpp'])!
+	}
+
+	mut sources := []string{}
+	sources << [
+		os.join_path(libhidapi_android_src, 'hid.cpp'),
+	]
+	// mut flags := []string{}
+	// flags << '-DANDROID_STL=c++_shared'
+	// for flag in flags {
+	// 	o_build.add_flag(flag, ['c', 'cpp'])!
+	// }
+	mut ldflags := ['-llog', '-lstdc++']
+	for flag in ldflags {
+		so_build.add_flag(flag, ['c', 'cpp'])!
+	}
+
+	for source in sources {
+		o_build.add_source(source, ['c', 'cpp'])!
+	}
+	sources.clear()
+
+	return &so_build.Node
 }

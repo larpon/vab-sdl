@@ -40,7 +40,9 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 	for sdl2_config in sdl2_configs {
 		match sdl2_config {
 			SDL2Config {
-				c_flags << ['-I"' + os.join_path(sdl2_config.root, 'include') + '"']
+				c_flags << [
+					'-I"' + os.join_path(sdl2_config.src.root, 'include') + '"',
+				]
 			}
 			SDL2ImageConfig {
 				c_flags << ['-I"' + os.join_path(sdl2_config.root) + '"']

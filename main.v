@@ -2,6 +2,7 @@ module main
 
 import os
 import flag
+import semver
 import vab.cli
 import vab.android
 import vab.android.ndk
@@ -15,11 +16,13 @@ const exe_description = '${exe_short_name}
 compile SDL for Android.
 '
 const exe_git_hash = ab_commit_hash()
-const work_directory = ab_work_dir()
+// const work_directory = ab_work_dir()
 const cache_directory = ab_cache_dir()
 const accepted_input_files = ['.v', '.apk', '.aab']
-const supported_sdl_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
-	'2.0.20', '2.0.22', '2.24.0']
+const supported_sdl2_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
+	'2.0.20', '2.0.22', '2.24.0', '2.24.1', '2.24.2', '2.26.0', '2.26.1', '2.26.2', '2.26.3',
+	'2.26.4', '2.26.5', '2.28.0', '2.28.1', '2.28.2', '2.28.3', '2.28.4', '2.28.5', '2.30.0',
+	'2.30.1', '2.30.2', '2.30.3', '2.30.4', '2.30.5', '2.30.6']
 
 fn main() {
 	// Collect user flags in an extended manner.
@@ -87,18 +90,50 @@ fn main() {
 
 	///////////////////////////////////////////////
 	// TODO
+	mut sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
+	sdl2_home = os.getenv_opt('SDL_HOME') or { sdl2_home }
+	sdl2_src := SDL2Source.make(sdl2_home)!
+	sdl2_sem_version := semver.from(sdl2_src.version) or {
+		panic('Error: could not convert SDL2 version ${version} to semantic version (semver)')
+	}
+
 	opt.lib_name = 'main'
 	opt.activity_name = 'VSDLActivity'
 	opt.package_id = 'io.v.android.ex'
 	opt.log_tags << ['SDL', 'SDL/APP']
 	opt.v_flags << '-d sdl_memory_no_gc'
-	opt.libs_extra << compile_sdl_and_v(opt) or { panic(err) }
+	opt.libs_extra << compile_sdl_and_v(opt, sdl2_src) or { panic(err) }
 	opt.assets_extra << [
 		os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
 	]
-	package_base_files := os.join_path(os.home_dir(), '.vmodules', 'vab', 'platforms',
-		'android')
-	opt.package_overrides_path = os.join_path(os.home_dir(), 'Projects/vdev/v_sdl4android/tmp/v_sdl_java') // TODO base_abo.package_overrides_path / dynamically figure out via dir in SDL2 source pack
+	// Java base files will change based on what version of SDL2 we are building for
+	// so we use a custom base_files structure outside the project directory to
+	// avoid leftover files from previous builds etc.
+	base_files_path := os.join_path(opt.work_dir, 'base_files')
+	os.rmdir_all(base_files_path) or {}
+	os.mkdir_all(base_files_path) or { panic(err) }
+	// Copy this project's base files as a starting point
+	// `vab` implicitly resolves default_base_files_path if there is an `platform/android` directory next to the executable
+	os.cp_all(android.default_base_files_path, base_files_path, true) or { panic(err) }
+	// Copy needed files from SDL2 sources to base_files
+	os.cp_all(sdl2_src.path_android_java_sources() or { panic(err) }, os.join_path(base_files_path,
+		'src'), true) or { panic(err) }
+
+	// TODO: some weird error when compiling.
+	// error: lambda expressions are not supported in -source 7
+	// Which leads to:
+	// SDLAudioManager.java:37: error: cannot find symbol / Fatal Error: Unable to find method metafactory
+	// PATCH / HACK: results in no audio device selection available
+	if sdl2_sem_version.satisfies('>=2.28.0') {
+		if opt.verbosity > 0 {
+			println('Notice: (HACK) Patching weird Java bug audio device selection will *not* work')
+		}
+		patches_path := os.join_path(os.dir(os.real_path(os.executable())), 'patches')
+		patch_file := os.join_path(patches_path, 'PATCH_1.SDLAudioManager.java')
+		patch_target_file := os.join_path(base_files_path, 'src', 'org', 'libsdl', 'app',
+			'SDLAudioManager.java')
+		os.cp(patch_file, patch_target_file) or { panic(err) }
+	}
 	//
 	//////////////////////////////////////////////
 
@@ -140,7 +175,7 @@ fn main() {
 	pck_opt := android.PackageOptions{
 		...apo
 		keystore:   keystore
-		base_files: package_base_files
+		base_files: base_files_path // NOTE: these are implicitly picked up by `vab` relative to the executable, this project uses a dynamic approach. See also: default_base_files_path in vab sources
 	}
 	android.package(pck_opt) or {
 		eprintln("Packaging didn't succeed.\n${err}")
@@ -157,7 +192,7 @@ fn main() {
 	}
 }
 
-fn compile_sdl_and_v(opt cli.Options) ![]string {
+fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 	mut collect_libs := []string{}
 
 	// Dump meta data from V
@@ -192,10 +227,11 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		api_level:   opt.api_level // sdk.default_api_level
 	}
 
-	mut sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
-	sdl2_home = os.getenv_opt('SDL_HOME') or { sdl2_home }
-
-	sdl2_version := os.file_name(sdl2_home).all_after('SDL2-') // TODO FIXME Detect version in V code
+	sdl2_home := sdl2_src.root
+	sdl2_version := sdl2_src.version
+	sdl2_sem_version := semver.from(sdl2_src.version) or {
+		return error('Error: could not convert SDL2 version ${version} to semantic version (semver)')
+	}
 
 	if opt.verbosity > 1 {
 		println('Using SDL2 at "${sdl2_home}" detected version: ${sdl2_version}')
@@ -225,9 +261,33 @@ fn compile_sdl_and_v(opt cli.Options) ![]string {
 		}
 		collect_libs << sdl2_abo.path_product_libs('SDL2')
 
+		// libhidapi.so must be distributed along with libc++_shared.so with SDL2 >2.0.12 <= 2.0.16
+		if sdl2_sem_version.satisfies('>2.0.12 <=2.0.16') {
+			if opt.verbosity > 1 {
+				println('Should collect libhidapi.so via "${sdl2_abo.path_product_libs('hidapi')}"')
+			}
+			collect_libs << sdl2_abo.path_product_libs('hidapi')
+
+			cxx_stl_root := os.join_path(ndk.root_version(base_abo.ndk_version), 'sources',
+				'cxx-stl')
+			cxx_stl_libs := os.join_path(cxx_stl_root, 'llvm-libc++', 'libs')
+			cxx_libcpp_shared_so := os.join_path(cxx_stl_libs, arch, 'libc++_shared.so')
+			if !os.is_file(cxx_libcpp_shared_so) {
+				return error('Error: can not collect "${cxx_libcpp_shared_so}" dependency of "libhidapi.so"')
+			}
+			// TODO: this is a bit of a hack
+			cxxstl_product_path := os.join_path(sdl2_abo.path_product_libs('cxxstl'),
+				arch)
+			os.mkdir_all(cxxstl_product_path) or { panic(err) }
+			os.cp(cxx_libcpp_shared_so, os.join_path(cxxstl_product_path, 'libc++_shared.so')) or {
+				panic(err)
+			}
+			collect_libs << sdl2_abo.path_product_libs('cxxstl')
+		}
+
 		sdl2_config := SDL2Config{
-			abo:  sdl2_abo
-			root: sdl2_home
+			abo: sdl2_abo
+			src: sdl2_src
 		}
 		mut libsdl2 := libsdl2_node(sdl2_config) or { return error(@FN + ': ${err}') }
 		sdl2_configs << sdl2_config
