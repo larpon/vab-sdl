@@ -3,7 +3,10 @@ module main
 import os
 import flag
 import semver
+import sdl
+import net.http
 import vab.cli
+import vab.android.util as vabutil
 import vab.android
 import vab.android.ndk
 // import vab.android.sdk
@@ -19,10 +22,45 @@ const exe_git_hash = ab_commit_hash()
 // const work_directory = ab_work_dir()
 const cache_directory = ab_cache_dir()
 const accepted_input_files = ['.v', '.apk', '.aab']
-const supported_sdl2_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12', '2.0.14', '2.0.16', '2.0.18',
-	'2.0.20', '2.0.22', '2.24.0', '2.24.1', '2.24.2', '2.26.0', '2.26.1', '2.26.2', '2.26.3',
-	'2.26.4', '2.26.5', '2.28.0', '2.28.1', '2.28.2', '2.28.3', '2.28.4', '2.28.5', '2.30.0',
-	'2.30.1', '2.30.2', '2.30.3', '2.30.4', '2.30.5', '2.30.6']
+const unsupported_sdl2_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12']
+const supported_sdl2_versions = ['2.0.14', '2.0.16', '2.0.18', '2.0.20', '2.0.22', '2.24.0', '2.24.1',
+	'2.24.2', '2.26.0', '2.26.1', '2.26.2', '2.26.3', '2.26.4', '2.26.5', '2.28.0', '2.28.1',
+	'2.28.2', '2.28.3', '2.28.4', '2.28.5', '2.30.0', '2.30.1', '2.30.2', '2.30.3', '2.30.4',
+	'2.30.5', '2.30.6', '2.30.7']
+
+const sdl2_source_downloads = {
+	'2.0.8':  'https://www.libsdl.org/release/SDL2-2.0.8.zip'
+	'2.0.9':  'https://www.libsdl.org/release/SDL2-2.0.9.zip'
+	'2.0.10': 'https://www.libsdl.org/release/SDL2-2.0.10.zip'
+	'2.0.12': 'https://www.libsdl.org/release/SDL2-2.0.12.zip'
+	'2.0.14': 'https://www.libsdl.org/release/SDL2-2.0.14.zip'
+	'2.0.16': 'https://www.libsdl.org/release/SDL2-2.0.16.zip'
+	'2.0.18': 'https://www.libsdl.org/release/SDL2-2.0.18.zip'
+	'2.0.20': 'https://www.libsdl.org/release/SDL2-2.0.20.zip'
+	'2.0.22': 'https://www.libsdl.org/release/SDL2-2.0.22.zip'
+	'2.24.0': 'https://www.libsdl.org/release/SDL2-2.24.0.zip'
+	'2.24.1': 'https://www.libsdl.org/release/SDL2-2.24.1.zip'
+	'2.24.2': 'https://www.libsdl.org/release/SDL2-2.24.2.zip'
+	'2.26.0': 'https://www.libsdl.org/release/SDL2-2.26.0.zip'
+	'2.26.1': 'https://www.libsdl.org/release/SDL2-2.26.1.zip'
+	'2.26.2': 'https://www.libsdl.org/release/SDL2-2.26.2.zip'
+	'2.26.3': 'https://www.libsdl.org/release/SDL2-2.26.3.zip'
+	'2.26.4': 'https://www.libsdl.org/release/SDL2-2.26.4.zip'
+	'2.26.5': 'https://www.libsdl.org/release/SDL2-2.26.5.zip'
+	'2.28.0': 'https://www.libsdl.org/release/SDL2-2.28.0.zip'
+	'2.28.1': 'https://www.libsdl.org/release/SDL2-2.28.1.zip'
+	'2.28.2': 'https://www.libsdl.org/release/SDL2-2.28.2.zip'
+	'2.28.3': 'https://www.libsdl.org/release/SDL2-2.28.3.zip'
+	'2.28.4': 'https://www.libsdl.org/release/SDL2-2.28.4.zip'
+	'2.28.5': 'https://www.libsdl.org/release/SDL2-2.28.5.zip'
+	'2.30.0': 'https://www.libsdl.org/release/SDL2-2.30.0.zip'
+	'2.30.1': 'https://www.libsdl.org/release/SDL2-2.30.1.zip'
+	'2.30.2': 'https://www.libsdl.org/release/SDL2-2.30.2.zip'
+	'2.30.3': 'https://www.libsdl.org/release/SDL2-2.30.3.zip'
+	'2.30.4': 'https://www.libsdl.org/release/SDL2-2.30.4.zip'
+	'2.30.5': 'https://www.libsdl.org/release/SDL2-2.30.5.zip'
+	'2.30.6': 'https://www.libsdl.org/release/SDL2-2.30.6.zip'
+}
 
 fn main() {
 	// Collect user flags in an extended manner.
@@ -90,11 +128,39 @@ fn main() {
 
 	///////////////////////////////////////////////
 	// TODO
-	mut sdl2_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2-2.0.20'))
-	sdl2_home = os.getenv_opt('SDL_HOME') or { sdl2_home }
+	sdl_module_version := sdl.vmod_version()
+	sdl_module_semver := semver.from(sdl_module_version) or { panic(err) }
+	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
+		eprintln('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
+		exit(1)
+	}
+	if !sdl_module_semver.satisfies('>=${lowest_supported_sdl_version}') {
+		eprintln('Utilized SDL2 version needs to be >= ${lowest_supported_sdl_version}. Detected ${sdl_module_version}')
+		exit(1)
+	}
+	mut sdl2_home := os.getenv_opt('SDL_HOME') or { '' }
+	if sdl2_home == '' {
+		// Download and extract to a temporary location
+		cache_path := os.join_path(os.temp_dir(), '${exe_short_name}', 'cache')
+		if !os.exists(cache_path) {
+			os.mkdir_all(cache_path) or {
+				eprintln('could not create cache path "${cache_path}"')
+				exit(1)
+			}
+		}
+		sdl2_home = download_and_extract_sdl2(sdl_module_version, cache_path, opt.verbosity) or {
+			eprintln(err)
+			exit(1)
+		}
+	}
+
 	sdl2_src := SDL2Source.make(sdl2_home)!
 	sdl2_sem_version := semver.from(sdl2_src.version) or {
 		panic('Error: could not convert SDL2 version ${version} to semantic version (semver)')
+	}
+	if sdl2_sem_version != sdl_module_semver {
+		eprintln('SDL2 source version (${sdl2_src.version}) must match the version of the `sdl` V module (${sdl_module_version})')
+		exit(1)
 	}
 
 	opt.lib_name = 'main'
@@ -190,6 +256,38 @@ fn main() {
 			println('Use `${cli.exe_short_name} --device <id> ${os.real_path(opt.output)}` to deploy package')
 		}
 	}
+}
+
+fn download_and_extract_sdl2(sdl_version string, path string, verbosity int) !string {
+	sdl_source_archive_url := sdl2_source_downloads[sdl_version] or {
+		return error('SDL2 source archive for ${sdl_version} could not be found for download')
+	}
+	sdl_source_archive := os.file_name(sdl_source_archive_url)
+	sdl_source_archive_temp_path := os.join_path(path, sdl_source_archive)
+	if !os.exists(sdl_source_archive_temp_path) {
+		if verbosity > 1 {
+			println('Downloading `${sdl_source_archive}` from "${sdl_source_archive_url}" to "${sdl_source_archive_temp_path}"...')
+		}
+		http.download_file(sdl_source_archive_url, sdl_source_archive_temp_path) or {
+			return error('failed to download `${sdl_source_archive_url}` needed for automatic SDL2 Android support: ${err}')
+		}
+	}
+	// Unpack
+	unpack_path := os.join_path(path, sdl_version)
+	sdl2_extract_root := os.join_path(unpack_path, sdl_source_archive.all_before_last('.'))
+	if !os.exists(sdl2_extract_root) {
+		if verbosity > 1 {
+			println('Unpacking "${sdl_source_archive_temp_path}" to "${unpack_path}"...')
+		}
+		os.rmdir_all(unpack_path) or {}
+		os.mkdir_all(unpack_path) or {
+			return error('failed create unpack directory "${unpack_path}" for "${sdl_source_archive}": ${err}')
+		}
+		vabutil.unzip(sdl_source_archive_temp_path, unpack_path) or {
+			return error('failed to extract "${sdl_source_archive_temp_path}" to "${unpack_path}": ${err}')
+		}
+	}
+	return sdl2_extract_root
 }
 
 fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
