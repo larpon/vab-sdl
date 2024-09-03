@@ -60,6 +60,7 @@ const sdl2_source_downloads = {
 	'2.30.4': 'https://www.libsdl.org/release/SDL2-2.30.4.zip'
 	'2.30.5': 'https://www.libsdl.org/release/SDL2-2.30.5.zip'
 	'2.30.6': 'https://www.libsdl.org/release/SDL2-2.30.6.zip'
+	'2.30.7': 'https://www.libsdl.org/release/SDL2-2.30.7.zip'
 }
 
 fn main() {
