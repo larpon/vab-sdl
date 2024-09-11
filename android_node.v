@@ -792,9 +792,18 @@ pub fn (an &AndroidNode) build() ! {
 		}
 	}
 
+	// NOTE: Only used for `verbosity`:
+	mut verbosity := 0
+	if node_data := an.fetch_data() {
+		abo := node_data.abo
+		verbosity = abo.verbosity
+	}
+
 	// Build dependencies first
 	if dependencies := node.items['dependencies'] {
-		println('Recursing ${node.id} ${node.note}')
+		if verbosity > 2 {
+			println('Recursing ${node.id} ${node.note}')
+		}
 		for dep_node in dependencies {
 			a_node := an.from_node(dep_node)
 			a_node.build()!
@@ -809,7 +818,9 @@ pub fn (an &AndroidNode) build() ! {
 
 	if is_object_build {
 		items_available := node.items.keys()
-		println('Build ${node.id} ${node.note} (c to o) items ${items_available}')
+		if verbosity > 2 {
+			println('Build ${node.id} ${node.note} (c to o) items ${items_available}')
+		}
 
 		an.build_src_to_o()!
 
@@ -840,7 +851,10 @@ pub fn (an &AndroidNode) build() ! {
 	if is_static_lib_build || is_shared_lib_build {
 		items_available := node.items.keys()
 		lib_type := if node.has_tags(['static']) { 'static' } else { 'dynamic' }
-		println('Build ${node.id} ${node.note} (${lib_type} lib) items ${items_available}')
+
+		if verbosity > 2 {
+			println('Build ${node.id} ${node.note} (${lib_type} lib) items ${items_available}')
+		}
 
 		if is_static_lib_build {
 			an.build_lib_static()!
@@ -871,7 +885,9 @@ pub fn (an &AndroidNode) build() ! {
 	}
 
 	if tasks := node.items['tasks'] {
-		println('Looping tasks ${node.id} ${node.note}')
+		if verbosity > 2 {
+			println('Looping tasks ${node.id} ${node.note}')
+		}
 		for task_node in tasks {
 			a_node := an.from_node(task_node)
 			a_node.build()!

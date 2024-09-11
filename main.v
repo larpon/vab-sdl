@@ -1,11 +1,14 @@
 module main
 
 import os
+// NOTE: This should never depend on `sdl` since the system <-> module version mismatch bug is not yet solved.
+// Compiling and running this should never yield a SDL compilation error, so:
+// import sdl // NO-NO
 import flag
 import semver
-import sdl
 import net.http
 import vab.cli
+import vab.vxt
 import vab.android.util as vabutil
 import vab.android
 import vab.android.ndk
@@ -64,51 +67,66 @@ const sdl2_source_downloads = {
 }
 
 fn main() {
-	// Collect user flags in an extended manner.
-	// Start with defaults -> overwrite by VAB_FLAGS -> overwrite by commandline flags -> extend by .vab file entries.
-	mut opt := cli.Options{}
-	mut fp := &flag.FlagParser(unsafe { nil })
+	mut args := arguments()
 
-	opt = cli.options_from_env(opt) or {
-		eprintln('Error while parsing `VAB_FLAGS`: ${err}')
-		eprintln('Use `${exe_short_name} -h` to see all flags')
+	// NOTE: do not support running sub commands
+	// cli.run_vab_sub_command(args)
+
+	// Get input to `vab`.
+	mut input := ''
+	input, args = cli.input_from_args(args)
+
+	// Collect user flags precedented going from most implicit to most explicit.
+	// Start with defaults -> overwrite by .vab file entries -> overwrite by VAB_FLAGS -> overwrite by commandline flags.
+	mut opt := cli.Options{}
+
+	opt = cli.options_from_dot_vab(input, opt) or {
+		eprintln('Error while parsing `.vab`: ${err}')
 		exit(1)
 	}
 
-	opt, fp = cli.args_to_options(os.args, opt) or {
+	opt = cli.options_from_env(opt) or {
+		eprintln('Error while parsing `VAB_FLAGS`: ${err}')
+		eprintln('Use `${cli.exe_short_name} -h` to see all flags')
+		exit(1)
+	}
+
+	mut unmatched_args := []string{}
+	opt, unmatched_args = cli.options_from_arguments(args, opt) or {
 		eprintln('Error while parsing `os.args`: ${err}')
-		eprintln('Use `${exe_short_name} -h` to see all flags')
+		eprintln('Use `${cli.exe_short_name} -h` to see all flags')
+		exit(1)
+	}
+
+	if unmatched_args.len > 0 {
+		eprintln('Error while parsing arguments. Could not match ${unmatched_args}')
+		eprintln('Use `${cli.exe_short_name} -h` to see all flags')
 		exit(1)
 	}
 
 	if opt.dump_usage {
-		println(fp.usage())
+		documentation := flag.to_doc[cli.Options](cli.vab_documentation_config) or {
+			eprintln('Error generating usage documentation via `flag.to_doc[cli.Options](...)` this should not happen.')
+			eprintln('Error message: ${err}')
+			exit(1)
+		}
+		println(documentation)
 		exit(0)
 	}
 
-	// All flags after this requires an input argument
-	if fp.args.len == 0 {
-		eprintln('No arguments given')
-		eprintln('Use `vab -h` to see all flags')
-		exit(1)
-	}
-
 	// Call the doctor at this point
-	if opt.additional_args.len > 0 {
-		if opt.additional_args[0] == 'doctor' {
-			// Validate environment
-			cli.check_essentials(false)
-			opt.resolve(false)
-			cli.doctor(opt)
-			exit(0)
-		}
+	if opt.run_builtin_cmd == 'doctor' {
+		// Validate environment
+		cli.check_essentials(false)
+		opt.resolve(false)
+		cli.doctor(opt)
+		exit(0)
 	}
 
 	// Validate environment
 	cli.check_essentials(true)
 	opt.resolve(true)
 
-	input := fp.args.last()
 	cli.validate_input(input) or {
 		eprintln('${cli.exe_short_name}: ${err}')
 		exit(1)
@@ -116,8 +134,6 @@ fn main() {
 	opt.input = input
 
 	opt.resolve_output()
-
-	opt.extend_from_dot_vab()
 
 	// Validate environment after options and input has been resolved
 	opt.validate_env()
@@ -129,15 +145,24 @@ fn main() {
 
 	///////////////////////////////////////////////
 	// TODO
-	sdl_module_version := sdl.vmod_version()
-	sdl_module_semver := semver.from(sdl_module_version) or { panic(err) }
+	sdl_v_module_path := os.join_path(vxt.vmodules()!, 'sdl')
+	if !os.is_dir(sdl_v_module_path) {
+		eprintln('${exe_short_name} need the `vlang/sdl` module installed in "${sdl_v_module_path}"')
+	}
+	sdl_v_module_vmod_file := os.join_path(sdl_v_module_path, 'v.mod')
+	vmod_contents := os.read_file(sdl_v_module_vmod_file)!
+	sdl_module_version := vmod_contents.all_after('version:').all_before('\n').trim(" '")
+	sdl_module_semver := semver.from(sdl_module_version)!
 	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
 		eprintln('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
 		exit(1)
 	}
 	if !sdl_module_semver.satisfies('>=${lowest_supported_sdl_version}') {
-		eprintln('Utilized SDL2 version needs to be >= ${lowest_supported_sdl_version}. Detected ${sdl_module_version}')
+		eprintln('${exe_short_name} currently only supports SDL2 versions >= ${lowest_supported_sdl_version}. Found ${sdl_module_version}')
 		exit(1)
+	}
+	if opt.verbosity > 1 {
+		println('Using SDL version ${sdl_module_version}')
 	}
 	mut sdl2_home := os.getenv_opt('SDL_HOME') or { '' }
 	if sdl2_home == '' {
@@ -168,10 +193,20 @@ fn main() {
 	opt.activity_name = 'VSDLActivity'
 	opt.package_id = 'io.v.android.ex'
 	opt.log_tags << ['SDL', 'SDL/APP']
-	opt.v_flags << '-d sdl_memory_no_gc'
+	// opt.package_id = 'com.blackgrain.android.shy.ex.image_regions'
+	// opt.app_name = 'Shy Example: Image Regions'
+	// opt.v_flags << '-d shy_debug_assets'
+	// opt.v_flags << '-d shy_use_wren'
+	opt.v_flags << '-no-bounds-checking'
+	// opt.v_flags << '-d shy_gamepad'
+	// opt.v_flags << '-d sdl_memory_no_gc'
+	opt.v_flags << '-skip-unused'
 	opt.libs_extra << compile_sdl_and_v(opt, sdl2_src) or { panic(err) }
 	opt.assets_extra << [
-		os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
+		// os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
+		os.join_path(os.home_dir(), '.vmodules', 'shy', 'assets'),
+		// os.join_path(os.home_dir(), 'Projects', 'puzzle_vibes', 'assets'),
+		// os.join_path(os.home_dir(), 'Projects', 'small_world', 'assets'),
 	]
 	// Java base files will change based on what version of SDL2 we are building for
 	// so we use a custom base_files structure outside the project directory to
