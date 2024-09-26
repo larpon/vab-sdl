@@ -498,7 +498,7 @@ fn (an &AndroidNode) build_src_to_o() ! {
 						''
 					}
 				}
-				cmd: build_cmd
+				cmd:     build_cmd
 			}
 		}
 	}
@@ -584,7 +584,7 @@ fn (an &AndroidNode) build_lib_static() ! {
 		message: vab_util.ShellJobMessage{
 			std_err: if abo.verbosity > 1 { 'Compiling (static) ${lib} for ${arch}' } else { '' }
 		}
-		cmd: build_a_cmd
+		cmd:     build_a_cmd
 	}
 	vab_util.run_jobs(jobs, abo.parallel, abo.verbosity)!
 	jobs.clear()
@@ -754,7 +754,7 @@ fn (an &AndroidNode) build_lib_shared() ! {
 				''
 			}
 		}
-		cmd: build_so_cmd
+		cmd:     build_so_cmd
 	}
 
 	vab_util.run_jobs(jobs, abo.parallel, abo.verbosity)!
