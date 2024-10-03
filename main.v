@@ -9,6 +9,7 @@ import semver
 import net.http
 import vab.cli
 import vab.vxt
+import vab.util
 import vab.android.util as vabutil
 import vab.android
 import vab.android.ndk
@@ -66,6 +67,11 @@ const sdl2_source_downloads = {
 	'2.30.7': 'https://www.libsdl.org/release/SDL2-2.30.7.zip'
 }
 
+fn highest_patch_version(version string) string {
+	// TODO
+	return '2.30.0'
+}
+
 fn main() {
 	mut args := arguments()
 
@@ -81,33 +87,34 @@ fn main() {
 	mut opt := cli.Options{}
 
 	opt = cli.options_from_dot_vab(input, opt) or {
-		eprintln('Error while parsing `.vab`: ${err}')
+		util.vab_error('Could not parse `.vab`', details: '${err}')
 		exit(1)
 	}
 
 	opt = cli.options_from_env(opt) or {
-		eprintln('Error while parsing `VAB_FLAGS`: ${err}')
-		eprintln('Use `${cli.exe_short_name} -h` to see all flags')
+		util.vab_error('Could not parse `VAB_FLAGS`', details: '${err}')
+		util.vab_notice('Use `${cli.exe_short_name} -h` to see all flags')
 		exit(1)
 	}
 
 	mut unmatched_args := []string{}
 	opt, unmatched_args = cli.options_from_arguments(args, opt) or {
-		eprintln('Error while parsing `os.args`: ${err}')
-		eprintln('Use `${cli.exe_short_name} -h` to see all flags')
+		util.vab_error('Could not parse `os.args`', details: '${err}')
+		util.vab_notice('Use `${cli.exe_short_name} -h` to see all flags')
 		exit(1)
 	}
 
 	if unmatched_args.len > 0 {
-		eprintln('Error while parsing arguments. Could not match ${unmatched_args}')
-		eprintln('Use `${cli.exe_short_name} -h` to see all flags')
+		util.vab_error('Could not parse arguments', details: 'No matches for ${unmatched_args}')
+		util.vab_notice('Use `${cli.exe_short_name} -h` to see all flags')
 		exit(1)
 	}
 
 	if opt.dump_usage {
 		documentation := flag.to_doc[cli.Options](cli.vab_documentation_config) or {
-			eprintln('Error generating usage documentation via `flag.to_doc[cli.Options](...)` this should not happen.')
-			eprintln('Error message: ${err}')
+			util.vab_error('Could not generate usage documentation via `flag.to_doc[cli.Options](...)` this should not happen',
+				details: '${err}'
+			)
 			exit(1)
 		}
 		println(documentation)
@@ -119,7 +126,8 @@ fn main() {
 		// Validate environment
 		cli.check_essentials(false)
 		opt.resolve(false)
-		cli.doctor(opt)
+		cli.doctor(opt) // TODO: own doctor output
+		println('SDL:\n\tTODO')
 		exit(0)
 	}
 
@@ -141,7 +149,10 @@ fn main() {
 	opt.ensure_launch_fields()
 
 	// Keystore file
-	keystore := opt.resolve_keystore()!
+	keystore := opt.resolve_keystore() or {
+		util.vab_error('Could not resolve keystore', details: '${err}')
+		exit(1)
+	}
 
 	///////////////////////////////////////////////
 	// TODO
@@ -197,10 +208,10 @@ fn main() {
 	// opt.app_name = 'Shy Example: Image Regions'
 	// opt.v_flags << '-d shy_debug_assets'
 	// opt.v_flags << '-d shy_use_wren'
-	opt.v_flags << '-no-bounds-checking'
+	// opt.v_flags << '-no-bounds-checking'
 	// opt.v_flags << '-d shy_gamepad'
 	// opt.v_flags << '-d sdl_memory_no_gc'
-	opt.v_flags << '-skip-unused'
+	// opt.v_flags << '-skip-unused'
 	opt.libs_extra << compile_sdl_and_v(opt, sdl2_src) or { panic(err) }
 	opt.assets_extra << [
 		// os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
@@ -226,9 +237,10 @@ fn main() {
 	// Which leads to:
 	// SDLAudioManager.java:37: error: cannot find symbol / Fatal Error: Unable to find method metafactory
 	// PATCH / HACK: results in no audio device selection available
+	// TODO: Check with 2.30.7+ since it might be fixed
 	if sdl2_sem_version.satisfies('>=2.28.0') {
 		if opt.verbosity > 0 {
-			println('Notice: (HACK) Patching weird Java bug audio device selection will *not* work')
+			util.vab_notice('(HACK) Patching weird Java bug audio device selection will *not* work')
 		}
 		patches_path := os.join_path(os.dir(os.real_path(os.executable())), 'patches')
 		patch_file := os.join_path(patches_path, 'PATCH_1.SDLAudioManager.java')
@@ -240,7 +252,7 @@ fn main() {
 	//////////////////////////////////////////////
 
 	ado := opt.as_android_deploy_options() or {
-		eprintln('Could not create deploy options.\n${err}')
+		util.vab_error('Could not create deploy options', details: '${err}')
 		exit(1)
 	}
 	deploy_opt := android.DeployOptions{
@@ -248,9 +260,7 @@ fn main() {
 		keystore: keystore
 	}
 
-	if opt.verbosity > 1 {
-		println('Output will be signed with keystore at "${deploy_opt.keystore.path}"')
-	}
+	opt.verbose(2, 'Output will be signed with keystore at "${deploy_opt.keystore.path}"')
 
 	input_ext := os.file_ext(opt.input)
 
@@ -269,7 +279,7 @@ fn main() {
 	// 	cache_key: if os.is_dir(input) || input_ext == '.v' { opt.input } else { '' }
 	// }
 	// android.compile(comp_opt) or {
-	// 	eprintln('$cli.exe_short_name compiling didn\'t succeed.\n$err')
+	// 	util.vab_error('Compiling did not succeed', details: '${err}')
 	// 	exit(1)
 	// }
 
@@ -280,7 +290,7 @@ fn main() {
 		base_files: base_files_path // NOTE: these are implicitly picked up by `vab` relative to the executable, this project uses a dynamic approach. See also: default_base_files_path in vab sources
 	}
 	android.package(pck_opt) or {
-		eprintln("Packaging didn't succeed.\n${err}")
+		util.vab_error('Packaging did not succeed', details: '${err}')
 		exit(1)
 	}
 
@@ -562,7 +572,7 @@ fn version() string {
 
 fn deploy(deploy_opt android.DeployOptions) {
 	android.deploy(deploy_opt) or {
-		eprintln('${cli.exe_short_name} deployment didn\'t succeed.\n${err}')
+		util.vab_error('Deployment did not succeed', details: '${err}')
 		if deploy_opt.kill_adb {
 			cli.kill_adb()
 		}
