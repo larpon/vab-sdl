@@ -2,7 +2,16 @@
 
 Extends [`vab`](https://github.com/vlang/vab) to support compiling V applications that use [`vlang/sdl`](https://github.com/vlang/sdl).
 
-`vab-sdl` is an [*extra command*](https://github.com/vlang/vab/blob/master/docs/docs.md#extending-vab) for [`vlang/vab`](https://github.com/vlang/vab/).
+`vab-sdl` is an [*extra command*](https://github.com/vlang/vab/blob/master/docs/docs.md#extending-vab) for [`vlang/vab`](https://github.com/vlang/vab/) (also works as a standalone tool).
+
+# Features
+
+`vab-sdl` is pure V software that can download and compile SDL2 from source using *only*
+the Android NDK provided compilers.
+That means you do not need to have `cmake`, `gradle` or anything else installed in order to
+compile and run V source code that does `import sdl` on Android.
+
+It makes running SDL2-based V application development on Android a little more fun to do ;)
 
 ## Prerequisites
 
@@ -33,7 +42,7 @@ vab sdl ~/.vmodules/sdl/examples/basic_window -o /tmp/sdl_app.apk
 ## Good To Know
 
 * `vab-sdl` is relatively new and still has rough edges.
-* Currently support for `sdl.image` and `sdl.mixer` is limited and still WIP.
+* Currently support for `sdl.image` and `sdl.mixer` is still WIP.
 * As a convenience `vab-sdl` wraps *most* of `vab`'s existing functionality, but not *all*.
 * Run `vab sdl doctor` to see the state of the tool.
 * Run `vab sdl -h` for an overview of the tools flags.
