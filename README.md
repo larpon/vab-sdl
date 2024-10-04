@@ -11,7 +11,7 @@ the Android NDK provided compilers.
 That means you do not need to have `cmake`, `gradle` or anything else installed in order to
 compile and run V source code that does `import sdl` on Android.
 
-It makes running SDL2-based V application development on Android a little more fun to do ;)
+It makes development of SDL2-based V applications on Android a little more fun ;)
 
 ## Prerequisites
 
