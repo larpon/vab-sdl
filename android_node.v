@@ -16,8 +16,7 @@ pub enum LibKind {
 }
 
 fn product_cache_path() string {
-	cache_path := os.cache_dir()
-	return os.join_path(cache_path, 'v', 'android', 'sdl', 'products')
+	return os.join_path(os.cache_dir(), 'v', 'android', 'sdl', 'products')
 }
 
 pub struct AndroidBuildOptions {
