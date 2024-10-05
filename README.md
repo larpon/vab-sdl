@@ -54,7 +54,7 @@ Once `vab-sdl` is installed you can test it with:
 vab sdl ~/.vmodules/sdl/examples/tvintris -o /tmp/tvintris.apk
 ```
 
-... or if it is a standalone tool:
+... or if used as standalone tool:
 ```bash
 ./vab-sdl ~/.vmodules/sdl/examples/tvintris -o /tmp/tvintris.apk
 ```
@@ -64,15 +64,20 @@ The first time the above command is run it will download all needed SDL2 depende
 and then *build each dependency specifically for Android* without invoking anything
 but the Android NDK compilers and tools. When it has built the dependencies it will
 package the SDL2 based application into an APK package using the SDL2 source's own
-main activity (`SDLActivity`). Since `vab-sdl` is basically just a reimplementation
-of `vab`'s main function it can be used as just like `vab` itself. That means
-you can pass the same flags to `vab-sdl` as you can pass to `vab` - this includes
-the `run` command for easy running and testing of apps.
+main activity (`SDLActivity`). Since `vab-sdl` is basically just a modified
+reimplementation of `vab`'s main function `vab.v` it can be used as just like
+`vab` itself. That means you can pass the same flags to `vab-sdl` as you can pass
+to `vab` - this includes the `run` command for easy running and testing of apps.
+
+Example:
+```bash
+vab sdl run ~/.vmodules/sdl/examples/tvintris
+```
 
 ## Good To Know
 
 * `vab-sdl` ships it's own modules for building SDL2 from source.
 * As a convenience `vab-sdl` wraps *most* of `vab`'s existing functionality, if
-  something is missing please open an issue with this project.
+  something is missing or broken please open an issue with this project.
 * Run `vab sdl doctor` to see the state of the tool.
 * Run `vab sdl -h` for an overview of how to invoke the tool.
