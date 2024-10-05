@@ -10,10 +10,10 @@ import net.http
 import vab.cli
 import vab.vxt
 import vab.util
+import vab.paths
 import vab.android.util as vabutil
 import vab.android
 import vab.android.ndk
-// import vab.android.sdk
 
 const exe_version = version()
 const exe_name = os.file_name(os.executable())
@@ -23,14 +23,14 @@ const exe_description = '${exe_short_name}
 compile SDL for Android.
 '
 const exe_git_hash = ab_commit_hash()
-// const work_directory = ab_work_dir()
-const cache_directory = ab_cache_dir()
 const accepted_input_files = ['.v', '.apk', '.aab']
 const unsupported_sdl2_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12']
 const supported_sdl2_versions = ['2.0.14', '2.0.16', '2.0.18', '2.0.20', '2.0.22', '2.24.0', '2.24.1',
 	'2.24.2', '2.26.0', '2.26.1', '2.26.2', '2.26.3', '2.26.4', '2.26.5', '2.28.0', '2.28.1',
 	'2.28.2', '2.28.3', '2.28.4', '2.28.5', '2.30.0', '2.30.1', '2.30.2', '2.30.3', '2.30.4',
 	'2.30.5', '2.30.6', '2.30.7']
+
+const cache_path = os.join_path(paths.cache(), '${exe_short_name}', 'cache')
 
 const sdl2_source_downloads = {
 	'2.0.8':  'https://www.libsdl.org/release/SDL2-2.0.8.zip'
@@ -65,6 +65,18 @@ const sdl2_source_downloads = {
 	'2.30.5': 'https://www.libsdl.org/release/SDL2-2.30.5.zip'
 	'2.30.6': 'https://www.libsdl.org/release/SDL2-2.30.6.zip'
 	'2.30.7': 'https://www.libsdl.org/release/SDL2-2.30.7.zip'
+}
+
+const sdl2_image_source_downloads = {
+	'2.0.5': 'https://www.libsdl.org/projects/SDL_image/release/SDL2_image-2.0.5.zip'
+}
+
+const sdl2_mixer_source_downloads = {
+	'2.0.4': 'https://www.libsdl.org/projects/SDL_mixer/release/SDL2_mixer-2.0.4.zip'
+}
+
+const sdl2_ttf_source_downloads = {
+	'2.0.15': 'https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.0.15.zip'
 }
 
 fn highest_patch_version(version string) string {
@@ -155,7 +167,7 @@ fn main() {
 	}
 
 	///////////////////////////////////////////////
-	// TODO
+	// SDL specific code
 	sdl_v_module_path := os.join_path(vxt.vmodules()!, 'sdl')
 	if !os.is_dir(sdl_v_module_path) {
 		eprintln('${exe_short_name} need the `vlang/sdl` module installed in "${sdl_v_module_path}"')
@@ -178,12 +190,9 @@ fn main() {
 	mut sdl2_home := os.getenv_opt('SDL_HOME') or { '' }
 	if sdl2_home == '' {
 		// Download and extract to a temporary location
-		cache_path := os.join_path(os.temp_dir(), '${exe_short_name}', 'cache')
-		if !os.exists(cache_path) {
-			os.mkdir_all(cache_path) or {
-				eprintln('could not create cache path "${cache_path}"')
-				exit(1)
-			}
+		paths.ensure(cache_path) or {
+			eprintln('could not ensure cache path "${cache_path}"')
+			exit(1)
 		}
 		sdl2_home = download_and_extract_sdl2(sdl_module_version, cache_path, opt.verbosity) or {
 			eprintln(err)
@@ -262,12 +271,18 @@ fn main() {
 
 	opt.verbose(2, 'Output will be signed with keystore at "${deploy_opt.keystore.path}"')
 
+	screenshot_opt := opt.as_android_screenshot_options(deploy_opt)
+
 	input_ext := os.file_ext(opt.input)
 
-	// Early deployment
+	// Early deployment of existing packages.
 	if input_ext in ['.apk', '.aab'] {
 		if deploy_opt.device_id != '' {
 			deploy(deploy_opt)
+			android.screenshot(screenshot_opt) or {
+				util.vab_error('Screenshot did not succeed', details: '${err}')
+				exit(1)
+			}
 			exit(0)
 		}
 	}
@@ -296,44 +311,34 @@ fn main() {
 
 	if deploy_opt.device_id != '' {
 		deploy(deploy_opt)
+		android.screenshot(screenshot_opt) or {
+			util.vab_error('Screenshot did not succeed', details: '${err}')
+			exit(1)
+		}
 	} else {
 		if opt.verbosity > 0 {
-			println('Generated ${os.real_path(opt.output)}')
-			println('Use `${cli.exe_short_name} --device <id> ${os.real_path(opt.output)}` to deploy package')
+			opt.verbose(1, 'Generated ${os.real_path(opt.output)}')
+			util.vab_notice('Use `${cli.exe_short_name} --device <id> ${os.real_path(opt.output)}` to deploy package')
+			util.vab_notice('Use `${cli.exe_short_name} --device <id> run ${os.real_path(opt.output)}` to both deploy and run the package')
+			if deploy_opt.run != '' {
+				util.vab_notice('Use `adb -s "<DEVICE ID>" shell am start -n "${deploy_opt.run}"` to run the app on the device, via adb')
+			}
 		}
 	}
 }
 
-fn download_and_extract_sdl2(sdl_version string, path string, verbosity int) !string {
-	sdl_source_archive_url := sdl2_source_downloads[sdl_version] or {
-		return error('SDL2 source archive for ${sdl_version} could not be found for download')
+fn deploy(deploy_opt android.DeployOptions) {
+	android.deploy(deploy_opt) or {
+		util.vab_error('Deployment did not succeed', details: '${err}')
+		if deploy_opt.kill_adb {
+			cli.kill_adb()
+		}
+		exit(1)
 	}
-	sdl_source_archive := os.file_name(sdl_source_archive_url)
-	sdl_source_archive_temp_path := os.join_path(path, sdl_source_archive)
-	if !os.exists(sdl_source_archive_temp_path) {
-		if verbosity > 1 {
-			println('Downloading `${sdl_source_archive}` from "${sdl_source_archive_url}" to "${sdl_source_archive_temp_path}"...')
-		}
-		http.download_file(sdl_source_archive_url, sdl_source_archive_temp_path) or {
-			return error('failed to download `${sdl_source_archive_url}` needed for automatic SDL2 Android support: ${err}')
-		}
+	deploy_opt.verbose(1, 'Deployed to ${deploy_opt.device_id} successfully')
+	if deploy_opt.kill_adb {
+		cli.kill_adb()
 	}
-	// Unpack
-	unpack_path := os.join_path(path, sdl_version)
-	sdl2_extract_root := os.join_path(unpack_path, sdl_source_archive.all_before_last('.'))
-	if !os.exists(sdl2_extract_root) {
-		if verbosity > 1 {
-			println('Unpacking "${sdl_source_archive_temp_path}" to "${unpack_path}"...')
-		}
-		os.rmdir_all(unpack_path) or {}
-		os.mkdir_all(unpack_path) or {
-			return error('failed create unpack directory "${unpack_path}" for "${sdl_source_archive}": ${err}')
-		}
-		vabutil.unzip(sdl_source_archive_temp_path, unpack_path) or {
-			return error('failed to extract "${sdl_source_archive_temp_path}" to "${unpack_path}": ${err}')
-		}
-	}
-	return sdl2_extract_root
 }
 
 fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
@@ -379,6 +384,51 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 
 	if opt.verbosity > 1 {
 		println('Using SDL2 at "${sdl2_home}" detected version: ${sdl2_version}')
+	}
+
+	cache_base_path := cache_path
+	paths.ensure(cache_base_path) or {
+		eprintln('could not ensure cache path "${cache_base_path}"')
+		exit(1)
+	}
+
+	mut sdl2_image_home := os.getenv_opt('SDL_IMAGE_HOME') or { '' }
+	mut sdl2_image_version := '0.0.0'
+	if 'sdl.image' in imported_modules {
+		sdl2_image_home = download_and_extract_sdl2_image('2.0.5', cache_base_path, opt.verbosity) or {
+			eprintln(err)
+			exit(1)
+		}
+		sdl2_image_version = os.file_name(sdl2_image_home).all_after('SDL2_image-') // TODO: FIXME Detect version in V code
+		if opt.verbosity > 1 {
+			println('Using SDL2_image at "${sdl2_image_home}" detected version: ${sdl2_image_version}')
+		}
+	}
+
+	mut sdl2_mixer_home := os.getenv_opt('SDL_MIXER_HOME') or { '' }
+	mut sdl2_mixer_version := '0.0.0'
+	if 'sdl.mixer' in imported_modules {
+		sdl2_mixer_home = download_and_extract_sdl2_mixer('2.0.4', cache_base_path, opt.verbosity) or {
+			eprintln(err)
+			exit(1)
+		}
+		sdl2_mixer_version = os.file_name(sdl2_mixer_home).all_after('SDL2_mixer-') // TODO: FIXME Detect version in V code
+		if opt.verbosity > 1 {
+			println('Using SDL2_mixer at "${sdl2_mixer_home}" detected version: ${sdl2_mixer_version}')
+		}
+	}
+
+	mut sdl2_ttf_home := os.getenv_opt('SDL_TTF_HOME') or { '' }
+	mut sdl2_ttf_version := '0.0.0'
+	if 'sdl.ttf' in imported_modules {
+		sdl2_ttf_home = download_and_extract_sdl2_ttf('2.0.15', cache_base_path, opt.verbosity) or {
+			eprintln(err)
+			exit(1)
+		}
+		sdl2_ttf_version = os.file_name(sdl2_ttf_home).all_after('SDL2_ttf-') // TODO: FIXME Detect version in V code
+		if opt.verbosity > 1 {
+			println('Using SDL2_ttf at "${sdl2_ttf_home}" detected version: ${sdl2_ttf_version}')
+		}
 	}
 
 	os.rmdir_all(product_cache_path()) or {}
@@ -437,9 +487,6 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 		sdl2_configs << sdl2_config
 
 		if 'sdl.image' in imported_modules {
-			sdl2_image_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2_image-2.0.5'))
-			sdl2_image_version := os.file_name(sdl2_image_home).all_after('SDL2_image-') // TODO FIXME Detect version in V code
-
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
 				version:  sdl2_image_version
@@ -458,9 +505,6 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 			libsdl2.add('tasks', libsdl2_image)
 		}
 		if 'sdl.mixer' in imported_modules {
-			sdl2_mixer_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2_mixer-2.0.4'))
-			sdl2_mixer_version := os.file_name(sdl2_mixer_home).all_after('SDL2_mixer-') // TODO FIXME Detect version in V code
-
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
 				version:  sdl2_mixer_version
@@ -481,9 +525,6 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 			libsdl2.add('tasks', libsdl2_mixer)
 		}
 		if 'sdl.ttf' in imported_modules {
-			sdl2_ttf_home := os.real_path(os.join_path(os.home_dir(), 'Downloads', 'SDL2_ttf-2.0.15'))
-			sdl2_ttf_version := os.file_name(sdl2_ttf_home).all_after('SDL2_ttf-') // TODO FIXME Detect version in V code
-
 			mut abo := AndroidBuildOptions{
 				...sdl2_abo
 				version:  sdl2_ttf_version
@@ -528,12 +569,75 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 	return collect_libs
 }
 
-fn ab_work_dir() string {
-	return os.join_path(os.temp_dir(), 'vsdl2android')
+fn download_and_extract_archive(version string, source_archive_url string, path string, verbosity int) !string {
+	source_archive := os.file_name(source_archive_url)
+	source_archive_temp_path := os.join_path(path, source_archive)
+	if !os.exists(source_archive_temp_path) {
+		if verbosity > 1 {
+			println('Downloading `${source_archive}` from "${source_archive_url}" to "${source_archive_temp_path}"...')
+		}
+		http.download_file(source_archive_url, source_archive_temp_path) or {
+			return error('failed to download `${source_archive_url}` needed for automatic SDL2 Android support: ${err}')
+		}
+	}
+	// Unpack
+	unpack_path := os.join_path(path, version)
+	extract_root := os.join_path(unpack_path, source_archive.all_before_last('.'))
+	if !os.exists(extract_root) {
+		if verbosity > 1 {
+			println('Unpacking "${source_archive_temp_path}" to "${unpack_path}"...')
+		}
+		os.rmdir_all(unpack_path) or {}
+		os.mkdir_all(unpack_path) or {
+			return error('failed create unpack directory "${unpack_path}" for "${source_archive}": ${err}')
+		}
+		vabutil.unzip(source_archive_temp_path, unpack_path) or {
+			return error('failed to extract "${source_archive_temp_path}" to "${unpack_path}": ${err}')
+		}
+	}
+	return extract_root
 }
 
-fn ab_cache_dir() string {
-	return os.join_path(os.cache_dir(), 'vab')
+fn download_and_extract_sdl2(sdl_version string, path string, verbosity int) !string {
+	source_archive_url := sdl2_source_downloads[sdl_version] or {
+		return error('SDL2 source archive for ${sdl_version} could not be found for download')
+	}
+	extract_root := download_and_extract_archive(sdl_version, source_archive_url, path,
+		verbosity)!
+	return extract_root
+}
+
+fn download_and_extract_sdl2_image(sdl_image_version string, path string, verbosity int) !string {
+	source_archive_url := sdl2_image_source_downloads[sdl_image_version] or {
+		return error('SDL2_Image source archive for ${sdl_image_version} could not be found for download')
+	}
+	final_path := os.join_path(path, 'SDL2_image')
+	paths.ensure(final_path) or { return error('could not ensure cache path "${final_path}"') }
+	extract_root := download_and_extract_archive(sdl_image_version, source_archive_url,
+		final_path, verbosity)!
+	return extract_root
+}
+
+fn download_and_extract_sdl2_mixer(sdl_mixer_version string, path string, verbosity int) !string {
+	source_archive_url := sdl2_mixer_source_downloads[sdl_mixer_version] or {
+		return error('SDL2_mixer source archive for ${sdl_mixer_version} could not be found for download')
+	}
+	final_path := os.join_path(path, 'SDL2_mixer')
+	paths.ensure(final_path) or { return error('could not ensure cache path "${final_path}"') }
+	extract_root := download_and_extract_archive(sdl_mixer_version, source_archive_url,
+		final_path, verbosity)!
+	return extract_root
+}
+
+fn download_and_extract_sdl2_ttf(sdl_ttf_version string, path string, verbosity int) !string {
+	source_archive_url := sdl2_ttf_source_downloads[sdl_ttf_version] or {
+		return error('SDL2_ttf source archive for ${sdl_ttf_version} could not be found for download')
+	}
+	final_path := os.join_path(path, 'SDL2_ttf')
+	paths.ensure(final_path) or { return error('could not ensure cache path "${final_path}"') }
+	extract_root := download_and_extract_archive(sdl_ttf_version, source_archive_url,
+		final_path, verbosity)!
+	return extract_root
 }
 
 fn ab_commit_hash() string {
@@ -568,20 +672,4 @@ fn version() string {
 		}
 	}
 	return v
-}
-
-fn deploy(deploy_opt android.DeployOptions) {
-	android.deploy(deploy_opt) or {
-		util.vab_error('Deployment did not succeed', details: '${err}')
-		if deploy_opt.kill_adb {
-			cli.kill_adb()
-		}
-		exit(1)
-	}
-	if deploy_opt.verbosity > 0 {
-		println('Deployed to ${deploy_opt.device_id} successfully')
-	}
-	if deploy_opt.kill_adb {
-		cli.kill_adb()
-	}
 }
