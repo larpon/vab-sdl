@@ -80,9 +80,27 @@ const sdl2_ttf_source_downloads = {
 	'2.0.15': 'https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.0.15.zip'
 }
 
+struct Options {
+pub:
+	sdl_version string
+}
+
 fn highest_patch_version(version string) string {
-	// TODO
-	return '2.30.0'
+	mut sem_version := semver.from(version) or { return version }
+	if sem_version.satisfies('>=2.24.0') {
+		target := version.all_before_last('.') // major.minor
+		for sdl_version in supported_sdl2_versions {
+			sdl_target := sdl_version.all_before_last('.') // major.minor
+			if sdl_target != target {
+				continue
+			}
+			sdl_sem_version := semver.from(sdl_version) or { return version }
+			if sdl_sem_version > sem_version {
+				sem_version = sdl_sem_version
+			}
+		}
+	}
+	return '${sem_version}'
 }
 
 fn main() {
@@ -116,6 +134,30 @@ fn main() {
 		util.vab_notice('Use `${cli.exe_short_name} -h` to see all flags')
 		exit(1)
 	}
+
+	///////////////////////////////////////////////
+	// SDL specific code
+	mut sdl_module_version := highest_patch_version(sdl_version_from_vmod()!)
+	sdl_module_semver := semver.from(sdl_module_version)!
+	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
+		eprintln('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
+		exit(1)
+	}
+	if !sdl_module_semver.satisfies('>=${lowest_supported_sdl_version}') {
+		eprintln('${exe_short_name} currently only supports SDL2 versions >= ${lowest_supported_sdl_version}. Found ${sdl_module_version}')
+		exit(1)
+	}
+	mut sdl_opt := Options{
+		sdl_version: sdl_module_version
+	}
+	sdl_opt, unmatched_args = sdl_options_from_arguments(unmatched_args, sdl_opt) or {
+		util.vab_error('Could not parse `os.args`', details: '${err}')
+		util.vab_notice('Use `${cli.exe_short_name} -h` to see all flags')
+		exit(1)
+	}
+	sdl_module_version = sdl_opt.sdl_version
+	//
+	///////////////////////////////////////////////
 
 	if unmatched_args.len > 0 {
 		util.vab_error('Could not parse arguments', details: 'No matches for ${unmatched_args}')
@@ -169,22 +211,6 @@ fn main() {
 
 	///////////////////////////////////////////////
 	// SDL specific code
-	sdl_v_module_path := os.join_path(vxt.vmodules()!, 'sdl')
-	if !os.is_dir(sdl_v_module_path) {
-		eprintln('${exe_short_name} need the `vlang/sdl` module installed in "${sdl_v_module_path}"')
-	}
-	sdl_v_module_vmod_file := os.join_path(sdl_v_module_path, 'v.mod')
-	vmod_contents := os.read_file(sdl_v_module_vmod_file)!
-	sdl_module_version := vmod_contents.all_after('version:').all_before('\n').trim(" '")
-	sdl_module_semver := semver.from(sdl_module_version)!
-	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
-		eprintln('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
-		exit(1)
-	}
-	if !sdl_module_semver.satisfies('>=${lowest_supported_sdl_version}') {
-		eprintln('${exe_short_name} currently only supports SDL2 versions >= ${lowest_supported_sdl_version}. Found ${sdl_module_version}')
-		exit(1)
-	}
 	if opt.verbosity > 1 {
 		println('Using SDL version ${sdl_module_version}')
 	}
@@ -340,6 +366,17 @@ fn deploy(deploy_opt android.DeployOptions) {
 	if deploy_opt.kill_adb {
 		cli.kill_adb()
 	}
+}
+
+fn sdl_version_from_vmod() !string {
+	sdl_v_module_path := os.join_path(vxt.vmodules()!, 'sdl')
+	if !os.is_dir(sdl_v_module_path) {
+		return error('${exe_short_name} need the `vlang/sdl` module installed in "${sdl_v_module_path}"')
+	}
+	sdl_v_module_vmod_file := os.join_path(sdl_v_module_path, 'v.mod')
+	vmod_contents := os.read_file(sdl_v_module_vmod_file)!
+	mut sdl_module_version := vmod_contents.all_after('version:').all_before('\n').trim(" '")
+	return sdl_module_version
 }
 
 fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
@@ -568,6 +605,16 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 		v_build.build() or { return error(@FN + ': ${err}') }
 	}
 	return collect_libs
+}
+
+// sdl_options_from_arguments returns an `Options` merged from (CLI/Shell -style) `arguments` using `defaults` as
+// values where no value can be matched in `arguments`.
+fn sdl_options_from_arguments(arguments []string, defaults Options) !(Options, []string) {
+	mut options, unmatched := flag.using[Options](defaults, arguments,
+		style: .v_flag_parser
+		mode:  .relaxed
+	)!
+	return options, unmatched
 }
 
 fn download_and_extract_archive(version string, source_archive_url string, path string, verbosity int) !string {
