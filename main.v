@@ -28,7 +28,7 @@ const unsupported_sdl2_versions = ['2.0.8', '2.0.9', '2.0.10', '2.0.12']
 const supported_sdl2_versions = ['2.0.14', '2.0.16', '2.0.18', '2.0.20', '2.0.22', '2.24.0', '2.24.1',
 	'2.24.2', '2.26.0', '2.26.1', '2.26.2', '2.26.3', '2.26.4', '2.26.5', '2.28.0', '2.28.1',
 	'2.28.2', '2.28.3', '2.28.4', '2.28.5', '2.30.0', '2.30.1', '2.30.2', '2.30.3', '2.30.4',
-	'2.30.5', '2.30.6', '2.30.7']
+	'2.30.5', '2.30.6', '2.30.7', '2.30.8']
 
 const cache_path = os.join_path(paths.cache(), '${exe_short_name}', 'cache')
 
@@ -65,6 +65,7 @@ const sdl2_source_downloads = {
 	'2.30.5': 'https://www.libsdl.org/release/SDL2-2.30.5.zip'
 	'2.30.6': 'https://www.libsdl.org/release/SDL2-2.30.6.zip'
 	'2.30.7': 'https://www.libsdl.org/release/SDL2-2.30.7.zip'
+	'2.30.8': 'https://www.libsdl.org/release/SDL2-2.30.8.zip'
 }
 
 const sdl2_image_source_downloads = {
