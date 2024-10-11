@@ -1,0 +1,63 @@
+name: Docs CI
+
+### Run on *EVERY* commit. The documentation *SHOULD* stay valid, and
+### the developers should receive early warning if they break it.
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-markdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VFLAGS: -cc tcc
+    steps:
+    - name: Checkout V
+      uses: actions/checkout@v4
+      with:
+        repository: vlang/v
+
+    - name: Build local v
+      run: make -j4 && sudo ./v symlink
+
+    - name: Checkout vab-sdl
+      uses: actions/checkout@v4
+      with:
+        path: vab-sdl
+
+    - name: Check markdown line length & code examples
+      run: v check-md -hide-warnings vab-sdl
+      ## NB: -hide-warnings is used here, so that the output is less noisy,
+      ## thus real errors are easier to spot.
+
+  report-missing-fn-doc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MOPTIONS: --relative-paths --exclude /tests/
+    steps:
+      - name: Checkout V
+        uses: actions/checkout@v4
+        with:
+          repository: vlang/v
+
+      - name: Build local v
+        run: make -j4 && sudo ./v symlink
+
+      - name: Checkout vab-sdl
+        uses: actions/checkout@v4
+        with:
+          path: vab-sdl
+
+      - name: Checkout previous vab-sdl
+        uses: actions/checkout@v4
+        with:
+          repository: larpon/vab-sdl
+          ref: master
+          path: pvab-sdl
+
+      - name: Check against parent commit
+        run: v missdoc --diff $MOPTIONS pvab-sdl vab-sdl
