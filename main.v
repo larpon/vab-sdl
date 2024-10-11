@@ -103,6 +103,12 @@ fn highest_patch_version(version string) string {
 	return '${sem_version}'
 }
 
+const default_sdl_options = cli.Options{
+	lib_name:      'main'
+	activity_name: 'VSDLActivity'
+	package_id:    'io.v.android.sdl'
+}
+
 fn main() {
 	mut args := arguments()
 
@@ -115,7 +121,9 @@ fn main() {
 
 	// Collect user flags precedented going from most implicit to most explicit.
 	// Start with defaults -> overwrite by .vab file entries -> overwrite by VAB_FLAGS -> overwrite by commandline flags.
-	mut opt := cli.Options{}
+	mut opt := cli.Options{
+		...default_sdl_options
+	}
 
 	opt = cli.options_from_dot_vab(input, opt) or {
 		util.vab_error('Could not parse `.vab`', details: '${err}')
@@ -236,25 +244,15 @@ fn main() {
 		exit(1)
 	}
 
-	opt.lib_name = 'main'
-	opt.activity_name = 'VSDLActivity'
-	opt.package_id = 'io.v.android.ex'
+	opt.lib_name = 'main' // TODO: currently hardcoded everywhere...
 	opt.log_tags << ['SDL', 'SDL/APP']
-	// opt.package_id = 'com.blackgrain.android.shy.ex.image_regions'
-	// opt.app_name = 'Shy Example: Image Regions'
-	// opt.v_flags << '-d shy_debug_assets'
-	// opt.v_flags << '-d shy_use_wren'
-	// opt.v_flags << '-no-bounds-checking'
-	// opt.v_flags << '-d shy_gamepad'
-	// opt.v_flags << '-d sdl_memory_no_gc'
-	// opt.v_flags << '-skip-unused'
 	opt.libs_extra << compile_sdl_and_v(opt, sdl2_src) or { panic(err) }
-	opt.assets_extra << [
-		// os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
-		os.join_path(os.home_dir(), '.vmodules', 'shy', 'assets'),
-		// os.join_path(os.home_dir(), 'Projects', 'puzzle_vibes', 'assets'),
-		// os.join_path(os.home_dir(), 'Projects', 'small_world', 'assets'),
-	]
+	// opt.assets_extra << [
+	// os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
+	// os.join_path(os.home_dir(), '.vmodules', 'shy', 'assets'),
+	// os.join_path(os.home_dir(), 'Projects', 'puzzle_vibes', 'assets'),
+	// os.join_path(os.home_dir(), 'Projects', 'small_world', 'assets'),
+	// ]
 	// Java base files will change based on what version of SDL2 we are building for
 	// so we use a custom base_files structure outside the project directory to
 	// avoid leftover files from previous builds etc.

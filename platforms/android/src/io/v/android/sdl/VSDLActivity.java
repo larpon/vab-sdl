@@ -1,4 +1,4 @@
-package io.v.android.ex;
+package io.v.android.sdl;
 
 import android.util.Log;
 import android.os.Bundle;

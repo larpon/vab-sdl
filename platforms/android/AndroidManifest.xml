@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="io.v.android.ex"
+    package="io.v.android.sdl"
     android:versionCode="1"
     android:versionName="1.0"
     android:installLocation="auto">
@@ -11,7 +11,7 @@
     <!--
     android:maxSdkVersion="integer"
     http://schemas.android.com/apk/res/android
-    package="io.v.android.ex"
+    package="io.v.android.sdl"
     -->
 
     <!-- OpenGL ES 2.0 -->
@@ -81,7 +81,7 @@
         // TODO: NOPE <uses-library android:name="org.libsdl.app" />
         -->
 
-        <activity android:name="io.v.android.ex.VSDLActivity"
+        <activity android:name="io.v.android.sdl.VSDLActivity"
             android:label="@string/v_app_name"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"
