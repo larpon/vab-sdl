@@ -643,7 +643,7 @@ fn libmodplug_node(config SDL2MixerConfig) !&Node {
 	}
 	sources.clear()
 
-	flags << '-Wno-deprecated-register -Wunused-function'.split(' ') // For at least v2.0.4
+	flags << '-Wno-deprecated-register -Wunused-function -Wno-register'.split(' ') // For at least v2.0.4
 	flags << '-DHAVE_SETENV -DHAVE_SINF'.split(' ')
 
 	for flag in flags {
