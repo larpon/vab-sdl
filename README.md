@@ -86,7 +86,7 @@ vab sdl run ~/.vmodules/sdl/examples/tvintris
   with newer versions of SDL2.
 * `vab-sdl` determines what version of SDL2 to build based on
   the version branch checked out in `~/.vmodules/sdl`.
-  Alternatively you can set the ENV var `SDL_VERSION` or pass the flag `--sdl-version` when building.
+  Alternatively you can set the ENV var `SDL_VERSION` or pass `--sdl-version` when building.
 * `vab-sdl` ships it's own modules for building SDL2 from source.
 * As a convenience, `vab-sdl` wraps *most* of `vab`'s existing functionality, if
   something is missing or broken please open an issue with this project.
