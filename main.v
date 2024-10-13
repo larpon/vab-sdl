@@ -145,7 +145,9 @@ fn main() {
 
 	///////////////////////////////////////////////
 	// SDL specific code
-	mut sdl_module_version := highest_patch_version(sdl_version_from_vmod()!)
+	mut sdl_module_version := os.getenv_opt('SDL_VERSION') or {
+		highest_patch_version(sdl_version_from_vmod()!)
+	}
 	sdl_module_semver := semver.from(sdl_module_version)!
 	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
 		eprintln('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
@@ -189,8 +191,8 @@ fn main() {
 		// Validate environment
 		cli.check_essentials(false)
 		opt.resolve(false)
-		cli.doctor(opt) // TODO: own doctor output
-		println('SDL:\n\tTODO')
+		cli.doctor(opt)
+		sdl_doctor(sdl_opt)
 		exit(0)
 	}
 
@@ -684,6 +686,33 @@ fn download_and_extract_sdl2_ttf(sdl_ttf_version string, path string, verbosity 
 	extract_root := download_and_extract_archive(sdl_ttf_version, source_archive_url,
 		final_path, verbosity)!
 	return extract_root
+}
+
+// sdl_doctor prints various information related to the SDL setup that will be used
+// for the Android compilation.
+fn sdl_doctor(opt Options) {
+	println('SDL')
+	println('\tenv')
+	if env_version := os.getenv_opt('SDL_VERSION') {
+		println('\t\tSDL_VERSION: ${env_version}')
+	}
+	if sdl_home := os.getenv_opt('SDL_HOME') {
+		println('\t\tSDL_HOME: ${sdl_home}')
+	}
+	if sdl_image_home := os.getenv_opt('SDL_IMAGE_HOME') {
+		println('\t\tSDL_IMAGE_HOME:    ${sdl_image_home}')
+	}
+	if sdl_mixer_home := os.getenv_opt('SDL_MIXER_HOME') {
+		println('\t\tSDL_MIXER_HOME:    ${sdl_mixer_home}')
+	}
+	if sdl_ttf_home := os.getenv_opt('SDL_TTF_HOME') {
+		println('\t\tSDL_TTF_HOME:    ${sdl_ttf_home}')
+	}
+	println('\tVersion')
+	if vmod_version := sdl_version_from_vmod() {
+		println('\t\tv.mod  ${vmod_version}')
+	}
+	println('\t\tTarget ${opt.sdl_version}')
 }
 
 fn ab_commit_hash() string {
