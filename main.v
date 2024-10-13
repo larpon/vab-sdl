@@ -150,11 +150,11 @@ fn main() {
 	}
 	sdl_module_semver := semver.from(sdl_module_version)!
 	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
-		eprintln('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
+		util.vab_error('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
 		exit(1)
 	}
 	if !sdl_module_semver.satisfies('>=${lowest_supported_sdl_version}') {
-		eprintln('${exe_short_name} currently only supports SDL2 versions >= ${lowest_supported_sdl_version}. Found ${sdl_module_version}')
+		util.vab_error('${exe_short_name} currently only supports SDL2 versions >= ${lowest_supported_sdl_version}. Found ${sdl_module_version}')
 		exit(1)
 	}
 	mut sdl_opt := Options{
@@ -192,7 +192,7 @@ fn main() {
 		cli.check_essentials(false)
 		opt.resolve(false)
 		cli.doctor(opt)
-		sdl_doctor(sdl_opt)
+		sdl_doctor(sdl_opt) // Add this extra command's output at the bottom
 		exit(0)
 	}
 
@@ -201,7 +201,7 @@ fn main() {
 	opt.resolve(true)
 
 	cli.validate_input(input) or {
-		eprintln('${cli.exe_short_name}: ${err}')
+		util.vab_error('${cli.exe_short_name}: ${err}')
 		exit(1)
 	}
 	opt.input = input
@@ -221,6 +221,11 @@ fn main() {
 
 	///////////////////////////////////////////////
 	// SDL specific code
+	if !opt.cache {
+		opt.verbose(1, 'Clearing cache...')
+		os.rmdir_all(cache_path) or {}
+	}
+
 	if opt.verbosity > 1 {
 		println('Using SDL version ${sdl_module_version}')
 	}
@@ -228,35 +233,36 @@ fn main() {
 	if sdl2_home == '' {
 		// Download and extract to a temporary location
 		paths.ensure(cache_path) or {
-			eprintln('could not ensure cache path "${cache_path}"')
+			util.vab_error('could not ensure cache path "${cache_path}"', details: err.msg())
 			exit(1)
 		}
 		sdl2_home = download_and_extract_sdl2(sdl_module_version, cache_path, opt.verbosity) or {
-			eprintln(err)
+			util.vab_error(err.msg())
 			exit(1)
 		}
 	}
 
 	sdl2_src := SDL2Source.make(sdl2_home)!
 	sdl2_sem_version := semver.from(sdl2_src.version) or {
-		panic('Error: could not convert SDL2 version ${version} to semantic version (semver)')
+		util.vab_error('could not convert SDL2 version ${sdl2_src.version} to semantic version (semver)')
+		exit(1)
 	}
 	if sdl2_sem_version != sdl_module_semver {
-		eprintln('SDL2 source version (${sdl2_src.version}) must match the version of the `sdl` V module (${sdl_module_version})')
+		util.vab_error('SDL2 source version (${sdl2_src.version}) must match the version of the `sdl` V module (${sdl_module_version})')
 		exit(1)
 	}
 
 	opt.lib_name = 'main' // TODO: currently hardcoded everywhere...
 	opt.log_tags << ['SDL', 'SDL/APP']
-	opt.libs_extra << compile_sdl_and_v(opt, sdl2_src) or { panic(err) }
-	// opt.assets_extra << [
-	// os.join_path(os.home_dir(), '.vmodules', 'sdl', 'examples', 'assets'),
-	// os.join_path(os.home_dir(), '.vmodules', 'shy', 'assets'),
-	// os.join_path(os.home_dir(), 'Projects', 'puzzle_vibes', 'assets'),
-	// os.join_path(os.home_dir(), 'Projects', 'small_world', 'assets'),
-	// ]
+
+	// This is the real meat... Compile custom v sources and SDL2 version
+	opt.libs_extra << compile_sdl_and_v(opt, sdl2_src) or {
+		util.vab_error(err.msg())
+		exit(1)
+	}
+
 	// Java base files will change based on what version of SDL2 we are building for
-	// so we use a custom base_files structure outside the project directory to
+	// so we use a *fresh* custom base_files structure outside the project directory to
 	// avoid leftover files from previous builds etc.
 	base_files_path := os.join_path(opt.work_dir, 'base_files')
 	os.rmdir_all(base_files_path) or {}
@@ -382,9 +388,11 @@ fn sdl_version_from_vmod() !string {
 fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 	mut collect_libs := []string{}
 
+	cache_base_path := cache_path
+
 	// Dump meta data from V
 	if opt.verbosity > 0 {
-		println('Analyzing V source')
+		opt.verbose(1, 'Analyzing V source')
 		if opt.v_flags.len > 0 {
 			println('V flags: `${opt.v_flags}`')
 		}
@@ -401,8 +409,7 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 	v_meta_dump := android.v_dump_meta(v_meta_opt) or { return error(@FN + ': ${err}') }
 	imported_modules := v_meta_dump.imports
 	if 'sdl' !in imported_modules {
-		eprintln('Error: v project "${opt.input}" does not import `sdl`')
-		exit(1)
+		return error('v project "${opt.input}" does not import `sdl`')
 	}
 
 	// Construct *base* build options
@@ -417,56 +424,37 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 	sdl2_home := sdl2_src.root
 	sdl2_version := sdl2_src.version
 	sdl2_sem_version := semver.from(sdl2_src.version) or {
-		return error('Error: could not convert SDL2 version ${version} to semantic version (semver)')
+		return error('could not convert SDL2 version ${version} to semantic version (semver)')
 	}
 
-	if opt.verbosity > 1 {
-		println('Using SDL2 at "${sdl2_home}" detected version: ${sdl2_version}')
-	}
+	opt.verbose(2, 'Using SDL2 at "${sdl2_home}" detected version: ${sdl2_version}')
 
-	cache_base_path := cache_path
 	paths.ensure(cache_base_path) or {
-		eprintln('could not ensure cache path "${cache_base_path}"')
-		exit(1)
+		return error('could not ensure cache path "${cache_base_path}"')
 	}
 
 	mut sdl2_image_home := os.getenv_opt('SDL_IMAGE_HOME') or { '' }
 	mut sdl2_image_version := '0.0.0'
 	if 'sdl.image' in imported_modules {
-		sdl2_image_home = download_and_extract_sdl2_image('2.0.5', cache_base_path, opt.verbosity) or {
-			eprintln(err)
-			exit(1)
-		}
+		sdl2_image_home = download_and_extract_sdl2_image('2.0.5', cache_base_path, opt.verbosity)!
 		sdl2_image_version = os.file_name(sdl2_image_home).all_after('SDL2_image-') // TODO: FIXME Detect version in V code
-		if opt.verbosity > 1 {
-			println('Using SDL2_image at "${sdl2_image_home}" detected version: ${sdl2_image_version}')
-		}
+		opt.verbose(2, 'Using SDL2_image at "${sdl2_image_home}" detected version: ${sdl2_image_version}')
 	}
 
 	mut sdl2_mixer_home := os.getenv_opt('SDL_MIXER_HOME') or { '' }
 	mut sdl2_mixer_version := '0.0.0'
 	if 'sdl.mixer' in imported_modules {
-		sdl2_mixer_home = download_and_extract_sdl2_mixer('2.0.4', cache_base_path, opt.verbosity) or {
-			eprintln(err)
-			exit(1)
-		}
+		sdl2_mixer_home = download_and_extract_sdl2_mixer('2.0.4', cache_base_path, opt.verbosity)!
 		sdl2_mixer_version = os.file_name(sdl2_mixer_home).all_after('SDL2_mixer-') // TODO: FIXME Detect version in V code
-		if opt.verbosity > 1 {
-			println('Using SDL2_mixer at "${sdl2_mixer_home}" detected version: ${sdl2_mixer_version}')
-		}
+		opt.verbose(2, 'Using SDL2_mixer at "${sdl2_mixer_home}" detected version: ${sdl2_mixer_version}')
 	}
 
 	mut sdl2_ttf_home := os.getenv_opt('SDL_TTF_HOME') or { '' }
 	mut sdl2_ttf_version := '0.0.0'
 	if 'sdl.ttf' in imported_modules {
-		sdl2_ttf_home = download_and_extract_sdl2_ttf('2.0.15', cache_base_path, opt.verbosity) or {
-			eprintln(err)
-			exit(1)
-		}
+		sdl2_ttf_home = download_and_extract_sdl2_ttf('2.0.15', cache_base_path, opt.verbosity)!
 		sdl2_ttf_version = os.file_name(sdl2_ttf_home).all_after('SDL2_ttf-') // TODO: FIXME Detect version in V code
-		if opt.verbosity > 1 {
-			println('Using SDL2_ttf at "${sdl2_ttf_home}" detected version: ${sdl2_ttf_version}')
-		}
+		opt.verbose(2, 'Using SDL2_ttf at "${sdl2_ttf_home}" detected version: ${sdl2_ttf_version}')
 	}
 
 	os.rmdir_all(product_cache_path()) or {}
@@ -495,9 +483,7 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 
 		// libhidapi.so must be distributed along with libc++_shared.so with SDL2 >2.0.12 <= 2.0.16
 		if sdl2_sem_version.satisfies('>2.0.12 <=2.0.16') {
-			if opt.verbosity > 1 {
-				println('Should collect libhidapi.so via "${sdl2_abo.path_product_libs('hidapi')}"')
-			}
+			opt.verbose(2, 'Should collect libhidapi.so via "${sdl2_abo.path_product_libs('hidapi')}"')
 			collect_libs << sdl2_abo.path_product_libs('hidapi')
 
 			cxx_stl_root := os.join_path(ndk.root_version(base_abo.ndk_version), 'sources',
@@ -505,14 +491,14 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 			cxx_stl_libs := os.join_path(cxx_stl_root, 'llvm-libc++', 'libs')
 			cxx_libcpp_shared_so := os.join_path(cxx_stl_libs, arch, 'libc++_shared.so')
 			if !os.is_file(cxx_libcpp_shared_so) {
-				return error('Error: can not collect "${cxx_libcpp_shared_so}" dependency of "libhidapi.so"')
+				return error('can not collect "${cxx_libcpp_shared_so}" dependency of "libhidapi.so"')
 			}
 			// TODO: this is a bit of a hack
 			cxxstl_product_path := os.join_path(sdl2_abo.path_product_libs('cxxstl'),
 				arch)
-			os.mkdir_all(cxxstl_product_path) or { panic(err) }
+			paths.ensure(cxxstl_product_path) or { return error(@FN + ': ${err}') }
 			os.cp(cxx_libcpp_shared_so, os.join_path(cxxstl_product_path, 'libc++_shared.so')) or {
-				panic(err)
+				return error(@FN + ': ${err}')
 			}
 			collect_libs << sdl2_abo.path_product_libs('cxxstl')
 		}
@@ -694,25 +680,27 @@ fn sdl_doctor(opt Options) {
 	println('SDL')
 	println('\tenv')
 	if env_version := os.getenv_opt('SDL_VERSION') {
-		println('\t\tSDL_VERSION: ${env_version}')
+		println('\t\tSDL_VERSION ${env_version}')
 	}
 	if sdl_home := os.getenv_opt('SDL_HOME') {
-		println('\t\tSDL_HOME: ${sdl_home}')
+		println('\t\tSDL_HOME ${sdl_home}')
 	}
 	if sdl_image_home := os.getenv_opt('SDL_IMAGE_HOME') {
-		println('\t\tSDL_IMAGE_HOME:    ${sdl_image_home}')
+		println('\t\tSDL_IMAGE_HOME ${sdl_image_home}')
 	}
 	if sdl_mixer_home := os.getenv_opt('SDL_MIXER_HOME') {
-		println('\t\tSDL_MIXER_HOME:    ${sdl_mixer_home}')
+		println('\t\tSDL_MIXER_HOME ${sdl_mixer_home}')
 	}
 	if sdl_ttf_home := os.getenv_opt('SDL_TTF_HOME') {
-		println('\t\tSDL_TTF_HOME:    ${sdl_ttf_home}')
+		println('\t\tSDL_TTF_HOME ${sdl_ttf_home}')
 	}
 	println('\tVersion')
 	if vmod_version := sdl_version_from_vmod() {
 		println('\t\tv.mod  ${vmod_version}')
 	}
 	println('\t\tTarget ${opt.sdl_version}')
+	println('\tENV')
+	println('\t\tCache path ${cache_path}')
 }
 
 fn ab_commit_hash() string {
