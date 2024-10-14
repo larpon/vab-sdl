@@ -15,6 +15,9 @@ import vab.android.util as vabutil
 import vab.android
 import vab.android.ndk
 
+const default_package_id = 'io.v.android.sdl'
+const default_activity_name = 'VSDLActivity'
+
 const exe_version = version()
 const exe_name = os.file_name(os.executable())
 const exe_short_name = os.file_name(os.executable()).replace('.exe', '')
@@ -105,10 +108,14 @@ fn highest_patch_version(version string) string {
 
 const default_sdl_options = cli.Options{
 	lib_name:      'main'
-	activity_name: 'VSDLActivity'
-	package_id:    'io.v.android.sdl'
+	package_id:    default_package_id
+	activity_name: default_activity_name
+	// Set defaults for vab-sdl
+	default_package_id:    default_package_id
+	default_activity_name: default_activity_name
 }
 
+// main is a rough reimplementation of `vab`'s main function
 fn main() {
 	mut args := arguments()
 
@@ -148,7 +155,10 @@ fn main() {
 	mut sdl_module_version := os.getenv_opt('SDL_VERSION') or {
 		highest_patch_version(sdl_version_from_vmod()!)
 	}
-	sdl_module_semver := semver.from(sdl_module_version)!
+	sdl_module_semver := semver.from(sdl_module_version) or {
+		util.vab_error('could not convert SDL2 version "${sdl_module_version}" to semantic version (semver)')
+		exit(1)
+	}
 	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
 		util.vab_error('No first entry in `supported_sdl2_versions` (${supported_sdl2_versions})')
 		exit(1)
@@ -226,9 +236,8 @@ fn main() {
 		os.rmdir_all(cache_path) or {}
 	}
 
-	if opt.verbosity > 1 {
-		println('Using SDL version ${sdl_module_version}')
-	}
+	opt.verbose(2, 'Using SDL version ${sdl_module_version}')
+
 	mut sdl2_home := os.getenv_opt('SDL_HOME') or { '' }
 	if sdl2_home == '' {
 		// Download and extract to a temporary location
@@ -278,8 +287,8 @@ fn main() {
 	// error: lambda expressions are not supported in -source 7
 	// Which leads to:
 	// SDLAudioManager.java:37: error: cannot find symbol / Fatal Error: Unable to find method metafactory
-	// PATCH / HACK: results in no audio device selection available
-	// TODO: Check with 2.30.7+ since it might be fixed
+	// PATCH / HACK: results in no audio *device* selection available
+	// TODO: Check with >=2.30.7 since it might be fixed
 	if sdl2_sem_version.satisfies('>=2.28.0') {
 		if opt.verbosity > 0 {
 			util.vab_notice('(HACK) Patching weird Java bug audio device selection will *not* work')
@@ -336,6 +345,7 @@ fn main() {
 		...apo
 		keystore:   keystore
 		base_files: base_files_path // NOTE: these are implicitly picked up by `vab` relative to the executable, this project uses a dynamic approach. See also: default_base_files_path in vab sources
+		// prepare_base_fn:
 	}
 	android.package(pck_opt) or {
 		util.vab_error('Packaging did not succeed', details: '${err}')
