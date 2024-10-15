@@ -1,7 +1,7 @@
 module main
 
 import os
-// NOTE: This should never depend on `sdl` since the system <-> module version mismatch bug is not yet solved.
+// NOTE: This should never depend on `sdl` since the system <-> module version mismatch bug is not yet 100% solved.
 // Compiling and running this should never yield a SDL compilation error, so:
 // import sdl // NO-NO
 import flag
@@ -17,6 +17,17 @@ import vab.android.ndk
 
 const default_package_id = 'io.v.android.sdl'
 const default_activity_name = 'VSDLActivity'
+
+const default_vab_sdl_options = cli.Options{
+	lib_name:      'main'
+	package_id:    default_package_id
+	activity_name: default_activity_name
+	// SDL2's Android Java skeleton uses mipmaps
+	icon_mipmaps: true
+	// Set defaults for vab-sdl
+	default_package_id:    default_package_id
+	default_activity_name: default_activity_name
+}
 
 const exe_version = version()
 const exe_name = os.file_name(os.executable())
@@ -106,15 +117,6 @@ fn highest_patch_version(version string) string {
 	return '${sem_version}'
 }
 
-const default_sdl_options = cli.Options{
-	lib_name:      'main'
-	package_id:    default_package_id
-	activity_name: default_activity_name
-	// Set defaults for vab-sdl
-	default_package_id:    default_package_id
-	default_activity_name: default_activity_name
-}
-
 // main is a rough reimplementation of `vab`'s main function
 fn main() {
 	mut args := arguments()
@@ -129,7 +131,7 @@ fn main() {
 	// Collect user flags precedented going from most implicit to most explicit.
 	// Start with defaults -> overwrite by .vab file entries -> overwrite by VAB_FLAGS -> overwrite by commandline flags.
 	mut opt := cli.Options{
-		...default_sdl_options
+		...default_vab_sdl_options
 	}
 
 	opt = cli.options_from_dot_vab(input, opt) or {
