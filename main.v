@@ -158,7 +158,7 @@ fn main() {
 		highest_patch_version(sdl_version_from_vmod()!)
 	}
 	sdl_module_semver := semver.from(sdl_module_version) or {
-		util.vab_error('could not convert SDL2 version "${sdl_module_version}" to semantic version (semver)')
+		util.vab_error('Could not convert SDL2 version "${sdl_module_version}" to semantic version (semver)')
 		exit(1)
 	}
 	lowest_supported_sdl_version := supported_sdl2_versions[0] or {
