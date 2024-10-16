@@ -351,6 +351,7 @@ fn main() {
 	}
 	android.package(pck_opt) or {
 		util.vab_error('Packaging did not succeed', details: '${err}')
+		cli.doctor_remedy(pck_opt, err.msg()) // Suggest possible fixes to known errors
 		exit(1)
 	}
 
@@ -491,7 +492,7 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 			api_level: min_api_level_available
 			work_dir:  os.join_path(base_abo.work_dir)
 		}
-		collect_libs << sdl2_abo.path_product_libs('SDL2')
+		collect_libs << sdl2_abo.path_product_libs('SDL2') // TODO: add only once...
 
 		// libhidapi.so must be distributed along with libc++_shared.so with SDL2 >2.0.12 <= 2.0.16
 		if sdl2_sem_version.satisfies('>2.0.12 <=2.0.16') {
@@ -591,7 +592,10 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 		aco := opt.as_android_compile_options()
 		v_config := VSDL2Config{
 			sdl2_configs: sdl2_configs
-			abo:          sdl2_abo
+			abo:          AndroidBuildOptions{
+				...sdl2_abo
+				cache: false // TODO: hack, always rebuild "libmain.so"
+			}
 			aco:          aco
 		}
 		mut libv := libv_node(v_config) or { return error(@FN + ': ${err}') }
