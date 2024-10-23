@@ -430,6 +430,7 @@ fn compile_sdl_and_v(opt cli.Options, sdl2_src SDL2Source) ![]string {
 		verbosity:   opt.verbosity
 		cache:       opt.cache
 		work_dir:    opt.work_dir
+		flags:       opt.c_flags
 		ndk_version: opt.ndk_version
 		api_level:   opt.api_level // sdk.default_api_level
 	}
