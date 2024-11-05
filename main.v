@@ -146,9 +146,6 @@ fn main() {
 		exit(1)
 	}
 
-dump(opt)
-  exit(1)
-
 	mut unmatched_args := []string{}
 	opt, unmatched_args = cli.options_from_arguments(args, opt) or {
 		util.vab_error('Could not parse `os.args`', details: '${err}')
