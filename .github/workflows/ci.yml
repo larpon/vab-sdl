@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 20
     env:
       VFLAGS: -d vab_allow_extra_commands
-      VAB_FLAGS: -v 3
+      VAB_FLAGS: -v 3 --ndk-version 25.1.8937393
     steps:
     - name: Checkout V
       uses: actions/checkout@v4
@@ -88,6 +88,10 @@ jobs:
 
     - name: Run vab doctor *before*
       run: vab doctor
+
+      # Cure syptom: `error: 'ALooper_pollAll' is unavailable: obsoleted in Android 1 - ALooper_pollAll may ignore wakes.`...
+    - name: Install older NDK version to match Ubuntu SDL2 version (2.0.20)
+      run: vab install ndk;25.1.8937393
 
     - name: Checkout vab-sdl
       uses: actions/checkout@v4
