@@ -91,15 +91,7 @@ jobs:
 
       # Cure syptom: `error: 'ALooper_pollAll' is unavailable: obsoleted in Android 1 - ALooper_pollAll may ignore wakes.`...
     - name: Install older NDK version to match Ubuntu SDL2 version (2.0.20)
-      run: |
-        vab --list-ndks
-        echo "---"
-        unset ANDROID_NDK_ROOT
-        vab install "ndk;25.1.8937393"
-        echo "---"
-        ls -al /usr/local/lib/android/sdk/ndk/
-        echo "---"
-        vab --list-ndks
+      run: vab install "ndk;25.1.8937393"
 
     - name: Checkout vab-sdl
       uses: actions/checkout@v4
@@ -119,6 +111,7 @@ jobs:
 
     - name: Test extra command
       run: |
+        unset ANDROID_NDK_ROOT # sat by the action, we need 25.x
         vab sdl ~/.vmodules/sdl/examples/tvintris -o tvintris.apk
         [ -f tvintris.apk ]
 
