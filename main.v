@@ -80,6 +80,7 @@ const sdl2_source_downloads = {
 	'2.30.6': 'https://www.libsdl.org/release/SDL2-2.30.6.zip'
 	'2.30.7': 'https://www.libsdl.org/release/SDL2-2.30.7.zip'
 	'2.30.8': 'https://www.libsdl.org/release/SDL2-2.30.8.zip'
+	'2.30.9': 'https://www.libsdl.org/release/SDL2-2.30.9.zip'
 }
 
 const sdl2_image_source_downloads = {
