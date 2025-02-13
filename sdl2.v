@@ -4,69 +4,9 @@ import os
 import semver
 import vab.android.ndk
 
-type SDL2ConfigType = SDL2Config | SDL2ImageConfig | SDL2MixerConfig | SDL2TTFConfig
-
-@[noinit]
-struct SDL2Source {
-	root    string // root of the SDL2 source distribution
-	version string
-}
-
-fn (s2s &SDL2Source) path_android_project() !string {
-	return os.join_path(s2s.root, 'android-project')
-}
-
-fn (s2s &SDL2Source) path_android_base_files() !string {
-	return os.join_path(s2s.path_android_project()!, 'app', 'src', 'main')
-}
-
-fn (s2s &SDL2Source) path_android_java_sources() !string {
-	return os.join_path(s2s.path_android_base_files()!, 'java')
-}
-
-fn SDL2Source.make(sdl2_src_path string) !SDL2Source {
-	root := sdl2_src_path.trim_right('/\\')
-	if !os.is_dir(root) {
-		return error('${@STRUCT}.${@FN}:${@LINE}: "${sdl2_src_path}" is not a directory')
-	}
-	if !os.is_file(os.join_path(root, 'README-SDL.txt')) {
-		return error('${@STRUCT}.${@FN}:${@LINE}: could not identify "${sdl2_src_path}" as an SDL2 source root (missing README-SDL.txt)')
-	}
-	sdl_version_h := os.join_path(root, 'include', 'SDL_version.h')
-	if !os.is_file(sdl_version_h) {
-		return error('${@STRUCT}.${@FN}:${@LINE}: could not find file "${sdl_version_h}" to indentify SDL2\'s version')
-	}
-	sdl_version_h_lines := os.read_lines(sdl_version_h) or {
-		return error('${@STRUCT}.${@FN}:${@LINE}: could not read lines in file "${sdl_version_h}" to indentify SDL2\'s version (${err})')
-	}
-	mut v_major := 0
-	mut v_minor := 0
-	mut v_patch := 0
-	for line in sdl_version_h_lines {
-		if line.contains('#define') {
-			if line.contains('SDL_MAJOR_VERSION') {
-				v_major = line.all_after('SDL_MAJOR_VERSION').trim_space().int()
-			}
-			if line.contains('SDL_MINOR_VERSION') {
-				v_minor = line.all_after('SDL_MINOR_VERSION').trim_space().int()
-			}
-			if line.contains('SDL_PATCHLEVEL') {
-				v_patch = line.all_after('SDL_PATCHLEVEL').trim_space().int()
-			}
-		}
-	}
-	if v_major == 0 && v_minor == 0 && v_patch == 0 {
-		return error('${@STRUCT}.${@FN}:${@LINE}: could not determine SDL2\'s version from file "${sdl_version_h}" (obtained so far: ${v_major}.${v_minor}.${v_patch})')
-	}
-	return SDL2Source{
-		root:    root
-		version: '${v_major}.${v_minor}.${v_patch}'
-	}
-}
-
 struct SDL2Config {
 	abo AndroidBuildOptions
-	src SDL2Source
+	src SDLSource
 }
 
 fn libsdl2_node(config SDL2Config) !&Node {
@@ -77,18 +17,24 @@ fn libsdl2_node(config SDL2Config) !&Node {
 	root := config.src.root
 	version := config.src.version
 
-	wip_not_supported := ['2.0.8', '2.0.9', '2.0.10', '2.0.12'] // GOAL: all in supported_sdl2_versions
+	wip_not_supported := ['2.0.8', '2.0.9', '2.0.10', '2.0.12'] // GOAL: all 2.x in supported_sdl_versions
 	if version in wip_not_supported {
 		return error('${err_sig}: versions ${wip_not_supported} is currently *not* supported (or WIP). Try with a newer version of SDL2"')
 	}
 
-	if version !in supported_sdl2_versions {
-		return error('${err_sig}: only versions ${supported_sdl2_versions} is currently supported (not "${version}")')
+	if version !in supported_sdl_versions {
+		return error('${err_sig}: only versions ${supported_sdl_versions} is currently supported (not "${version}")')
 	}
 
 	sem_version := semver.from(version) or {
 		return error('${err_sig}: could not convert SDL2 version ${version} to semantic version (semver)')
 	}
+
+	// TODO: check these from https://wiki.libsdl.org/SDL2/Android
+	// >=12 for SDL < 2.0.8
+	// >=19 for SDL >= 2.0.8
+	// >=26 for SDL >= 2.0.16
+	// >=31 for SDL >= 2.0.18
 
 	mut lib := new_node('SDL2', .build_dynamic_lib, arch, ['cpp'])
 
@@ -260,55 +206,6 @@ fn libsdl2_node(config SDL2Config) !&Node {
 	}
 
 	return &lib.Node
-}
-
-fn collect_flat_ext(path string, mut files []string, ext string) {
-	ls := os.ls(path) or { panic(err) }
-	for file in ls {
-		if file.ends_with(ext) {
-			files << os.join_path(path.trim_string_right(os.path_separator), file)
-		}
-	}
-}
-
-fn libcpufeatures_node(cpuf_root string, abo AndroidBuildOptions) !&Node {
-	arch := abo.arch
-
-	mut a_build := new_node('cpufeatures', .build_static_lib, arch, [])
-	a_build.attach_data(abo: abo)
-
-	mut o_build := new_node('cpufeatures', .build_src_to_o, arch, [])
-	o_build.attach_data(abo: abo)
-
-	o_build.add('includes', as_heap(
-		id:   cpuf_root
-		note: 'C header include'
-		tags: [
-			'c',
-			'include',
-		]
-	))
-
-	mut sources := []string{}
-	sources << [
-		os.join_path(cpuf_root, 'cpu-features.c'),
-	]
-	for source in sources {
-		o_build.add('sources', as_heap(id: source, note: 'C source', tags: ['c', 'source', 'file']))
-	}
-
-	mut flags := ['-Wall', '-Wextra', '-Werror']
-	for flag in flags {
-		o_build.add('flags', as_heap(
-			id:   flag
-			note: 'build flag'
-			tags: ['c', 'cpp', 'flag', 'warning']
-		))
-	}
-	flags.clear()
-
-	a_build.add('dependencies', &o_build.Node)
-	return &a_build.Node
 }
 
 fn libhidapi_node(config SDL2Config) !&Node {

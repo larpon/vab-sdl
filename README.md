@@ -10,17 +10,18 @@ not to the `v` or `vab` projects.
 
 ## Features
 
-`vab-sdl` is pure V software that can download and compile SDL2 for Android from source
+`vab-sdl` is pure V software that can download and compile SDL2 and SDL3 for Android from source
 using *only* the Android NDK provided compilers (in parallel).
 That means you do not need to use `cmake`, `gradle` or anything else in order to
 compile and run V source code that does `import sdl` on Android. Because of this
-build times is greatly improved in contrast to SDL2's own solution that is
+build times is greatly improved in contrast to SDL's own solution that is
 based on `gradle` and `ndk-build`.
 
 ## Prerequisites
 
 * An application or example that import [`vlang/sdl`](https://github.com/vlang/sdl).
-* A ***working*** install of the [`vab`](https://github.com/vlang/vab/) command-line tool compiled with `-d vab_allow_extra_commands`.
+* A ***working*** install of the [`vab`](https://github.com/vlang/vab/) command-line tool
+(optionally) compiled with `-d vab_allow_extra_commands`.
 
 To compile `vab` with the *extra command* feature you can build `vab` like in this example:
 ```bash
@@ -59,12 +60,12 @@ vab sdl ~/.vmodules/sdl/examples/tvintris -o /tmp/tvintris.apk
 ./vab-sdl ~/.vmodules/sdl/examples/tvintris -o /tmp/tvintris.apk
 ```
 
-The first time the above command is run it will download all needed SDL2 dependencies
+The first time the above command is run it will download all needed SDL dependencies
 (including SDL2_image, SDL2_mixer and/or SDL2_ttf) to a cache location
 and then *build each dependency specifically for Android* without invoking anything
 but the Android NDK compilers and tools. When it has built the dependencies it will
-package the SDL2 based application into an APK package using a [specially crafted VSDLActivity](https://github.com/larpon/vab-sdl/blob/master/platforms/android/src/io/v/android/sdl/VSDLActivity.java)
-that derive from the SDL2 source's own main activity (`SDLActivity`).
+package the SDL based application into an APK package using a [specially crafted VSDLActivity](https://github.com/larpon/vab-sdl/blob/master/platforms/android/src/io/v/android/sdl/VSDLActivity.java)
+that derive from the SDL source's own main activity (`SDLActivity`).
 Since `vab-sdl` is basically just a modified reimplementation of `vab`'s main
 function [`vab.v`](https://github.com/vlang/vab/blob/master/vab.v) it can mostly be called just like `vab` itself.
 That means you can pass the same flags to `vab-sdl` as you can pass
@@ -77,17 +78,17 @@ vab sdl run ~/.vmodules/sdl/examples/tvintris
 
 ## Good To Know
 
-* Currently `vab-sdl` supports SDL2 versions from `2.0.14` and up.
-  The reason we do not support *all* versions is because SDL2's own Android support
+* Currently `vab-sdl` supports SDL2 and SDL3 versions from `2.0.14` and up.
+  The reason we do not support *all* SDL2 versions is because SDL2's own Android support
   was cumbersome and cryptic at the time the older versions was developed.
   It can surely be achieved but requires a lot of time and effort to get working.
   In reality this should not be a problem since SDL2 is backwards compatible.
   So source written for SDL2 versions <= `2.0.12` should compile and run just fine for Android
   with newer versions of SDL2.
-* `vab-sdl` determines what version of SDL2 to build based on
+* `vab-sdl` determines what version of SDL to build based on
   the version branch checked out in `~/.vmodules/sdl`.
   Alternatively you can set the ENV var `SDL_VERSION` or pass `--sdl-version` when building.
-* `vab-sdl` ships it's own modules for building SDL2 from source.
+* `vab-sdl` ships it's own modules for building SDL from source.
 * As a convenience, `vab-sdl` wraps *most* of `vab`'s existing functionality, if
   something is missing or broken please open an issue with this project.
 * The lib name of the `.so` file that `vab-sdl` produces is currently always `libmain.so`.

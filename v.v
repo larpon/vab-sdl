@@ -4,14 +4,14 @@ import os
 import vab.android
 // import vab.android.ndk
 
-struct VSDL2Config {
-	sdl2_configs []SDL2ConfigType
-	abo          AndroidBuildOptions
-	aco          android.CompileOptions
+struct VSDLConfig {
+	sdl_configs []SDLConfigType
+	abo         AndroidBuildOptions
+	aco         android.CompileOptions
 }
 
-pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
-	sdl2_configs := vsc.sdl2_configs
+pub fn (vsc VSDLConfig) android_compile_options() android.CompileOptions {
+	sdl_configs := vsc.sdl_configs
 	abo := vsc.abo
 	aco := vsc.aco
 
@@ -37,21 +37,26 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 	// c_flags << ['-Werror=implicit-function-declaration']
 	// See TODO in android_node.v ... JFC what a mess
 
-	for sdl2_config in sdl2_configs {
-		match sdl2_config {
+	for sdl_config in sdl_configs {
+		match sdl_config {
 			SDL2Config {
 				c_flags << [
-					'-I"' + os.join_path(sdl2_config.src.root, 'include') + '"',
+					'-I"' + os.join_path(sdl_config.src.root, 'include') + '"',
 				]
 			}
 			SDL2ImageConfig {
-				c_flags << ['-I"' + os.join_path(sdl2_config.root) + '"']
+				c_flags << ['-I"' + os.join_path(sdl_config.root) + '"']
 			}
 			SDL2MixerConfig {
-				c_flags << ['-I"' + os.join_path(sdl2_config.root) + '"']
+				c_flags << ['-I"' + os.join_path(sdl_config.root) + '"']
 			}
 			SDL2TTFConfig {
-				c_flags << ['-I"' + os.join_path(sdl2_config.root) + '"']
+				c_flags << ['-I"' + os.join_path(sdl_config.root) + '"']
+			}
+			SDL3Config {
+				c_flags << [
+					'-I"' + os.join_path(sdl_config.src.root, 'include') + '"',
+				]
 			}
 		}
 	}
@@ -74,15 +79,15 @@ pub fn (vsc VSDL2Config) android_compile_options() android.CompileOptions {
 	return acop
 }
 
-fn libv_node(config VSDL2Config) !&Node {
+fn libv_node(config VSDLConfig) !&Node {
 	// err_sig := @MOD + '.' + @FN
 
-	sdl2_configs := config.sdl2_configs
+	sdl_configs := config.sdl_configs
 	abo := config.abo
 	aco := config.android_compile_options()
 	arch := abo.arch
 
-	heap_v_config := &VSDL2Config{
+	heap_v_config := &VSDLConfig{
 		...config
 	}
 
@@ -104,8 +109,8 @@ fn libv_node(config VSDL2Config) !&Node {
 	lib.funcs['pre_build'] = collect_v_c_o_files
 	lib.data['v_config'] = voidptr(heap_v_config)
 
-	for sdl2_config in sdl2_configs {
-		match sdl2_config {
+	for sdl_config in sdl_configs {
+		match sdl_config {
 			SDL2Config {
 				lib.add('libs', as_heap(id: 'SDL2', tags: ['dynamic', '${arch}']))
 			}
@@ -117,6 +122,9 @@ fn libv_node(config VSDL2Config) !&Node {
 			}
 			SDL2TTFConfig {
 				lib.add('libs', as_heap(id: 'SDL2_ttf', tags: ['dynamic', '${arch}']))
+			}
+			SDL3Config {
+				lib.add('libs', as_heap(id: 'SDL3', tags: ['dynamic', '${arch}']))
 			}
 		}
 	}
@@ -139,11 +147,11 @@ fn compile_v_to_c(mut n Node) ! {
 		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
 	v_config := unsafe {
-		&VSDL2Config(n.data['v_config'] or {
+		&VSDLConfig(n.data['v_config'] or {
 			panic('${err_sig}: no data["v_config"] in node ${n.id}')
 		})
 	}
-	// sdl2_configs := v_config.sdl2_configs
+	// sdl_config := v_config.sdl_config
 	abo := v_config.abo
 
 	acop := v_config.android_compile_options()
@@ -164,11 +172,11 @@ fn collect_v_c_o_files(mut n Node) ! {
 		return error('${err_sig}: no data["v_config"] in node ${n.id}')
 	}
 	v_config := unsafe {
-		&VSDL2Config(n.data['v_config'] or {
+		&VSDLConfig(n.data['v_config'] or {
 			panic('${err_sig}: no data["v_config"] in node ${n.id}')
 		})
 	}
-	// sdl2_configs := v_config.sdl2_configs
+	// sdl_config := v_config.sdl_config
 	abo := v_config.abo
 	arch := abo.arch
 
