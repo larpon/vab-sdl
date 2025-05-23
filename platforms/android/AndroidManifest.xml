@@ -55,6 +55,9 @@
     <!-- Allow access to the vibrator -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Allow access to the camera -->
+    <!-- <uses-permission android:name="android.permission.CAMERA" /> -->
+
     <!-- if you want to capture audio, uncomment this. -->
     <!-- <uses-permission android:name="android.permission.RECORD_AUDIO" /> -->
 
