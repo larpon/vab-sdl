@@ -44,7 +44,7 @@ const supported_sdl_versions = ['2.0.14', '2.0.16', '2.0.18', '2.0.20', '2.0.22'
 	'2.28.2', '2.28.3', '2.28.4', '2.28.5', '2.30.0', '2.30.1', '2.30.2', '2.30.3', '2.30.4',
 	'2.30.5', '2.30.6', '2.30.7', '2.30.8', '2.30.9', '2.30.10', '2.30.11', '2.30.12', '2.32.0',
 	'2.32.2', '2.32.4', '2.32.6', '3.2.0', '3.2.2', '3.2.4', '3.2.6', '3.2.8', '3.2.10', '3.2.12',
-	'3.2.14']
+	'3.2.14', '3.2.16', '3.2.18', '3.2.20', '3.2.22']
 
 const cache_path = os.join_path(paths.cache(), '${exe_short_name}', 'cache')
 
@@ -98,6 +98,10 @@ const sdl_source_downloads = {
 	'3.2.10':  'https://www.libsdl.org/release/SDL3-3.2.10.zip'
 	'3.2.12':  'https://www.libsdl.org/release/SDL3-3.2.12.zip'
 	'3.2.14':  'https://www.libsdl.org/release/SDL3-3.2.14.zip'
+	'3.2.16':  'https://www.libsdl.org/release/SDL3-3.2.16.zip'
+	'3.2.18':  'https://www.libsdl.org/release/SDL3-3.2.18.zip'
+	'3.2.20':  'https://www.libsdl.org/release/SDL3-3.2.20.zip'
+	'3.2.22':  'https://www.libsdl.org/release/SDL3-3.2.22.zip'
 }
 
 const sdl_image_source_downloads = {
