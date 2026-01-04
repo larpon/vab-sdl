@@ -307,7 +307,7 @@ jobs:
 
     - name: Build example
       run: |
-        # V BUG: `module no_main` currently only works if run relative from `~/.vmodules/sdl` OR a full path to the entry .v file is given:
+        # BUG: `module no_main` currently only works if run relative from `~/.vmodules/sdl` OR a full path to the entry .v file is given:
         vab sdl ~/.vmodules/sdl/examples/ports/renderer/05-rectangles/rectangles.v -o example.apk
         [ -f example.apk ]
 
