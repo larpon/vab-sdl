@@ -246,3 +246,68 @@ jobs:
         vab sdl ~/.vmodules/sdl/examples/basic_window -o example.apk
         [ -f example.apk ]
 
+  ubuntu-latest-sdl3-build-no-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VFLAGS: -d vab_allow_extra_commands
+      VAB_FLAGS: -v 3
+    steps:
+    - name: Checkout V
+      uses: actions/checkout@v4
+      with:
+        repository: vlang/v
+
+    - name: Build local v
+      run: make && sudo ./v symlink
+
+    - name: Checkout SDL
+      uses: actions/checkout@v4
+      with:
+        repository: vlang/sdl
+        ref: 3.4.0
+        path: sdl
+
+    - name: Simulate "v install sdl"
+      run: mv sdl ~/.vmodules
+
+    - name: Checkout vab
+      uses: actions/checkout@v4
+      with:
+        repository: vlang/vab
+        path: vab
+
+    - name: Install vab
+      run: |
+        mv vab ~/.vmodules
+        v -g ~/.vmodules/vab
+        sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
+
+    - name: Run 'vab --help'
+      run: vab --help
+
+    - name: Run vab doctor *before*
+      run: vab doctor
+
+    - name: Checkout vab-sdl
+      uses: actions/checkout@v4
+      with:
+        path: larpon/vab-sdl
+
+    - name: Install extra command
+      run: |
+        vab install extra larpon/vab-sdl
+
+    - name: Run vab doctor *after*
+      run: vab doctor
+
+    - name: Run extra command doctor
+      run: |
+        vab sdl doctor
+
+    - name: Build example
+      run: |
+        # V BUG: `module no_main` currently only works if run relative from `~/.vmodules/sdl` OR a full path to the entry .v file is given:
+        vab sdl ~/.vmodules/sdl/examples/ports/renderer/05-rectangles/rectangles.v -o example.apk
+        [ -f example.apk ]
+
