@@ -1,7 +1,7 @@
 module main
 
 import os
-// import semver
+import semver
 import vab.android.ndk
 
 struct SDL3Config {
@@ -21,9 +21,9 @@ fn libsdl3_node(config SDL3Config) !&Node {
 		return error('${err_sig}: only versions ${supported_sdl_versions} is currently supported (not "${version}")')
 	}
 
-	// sem_version := semver.from(version) or {
-	// 	return error('${err_sig}: could not convert SDL3 version ${version} to semantic version (semver)')
-	// }
+	sem_version := semver.from(version) or {
+		return error('${err_sig}: could not convert SDL3 version ${version} to semantic version (semver)')
+	}
 
 	// TODO: check these from time to time https://wiki.libsdl.org/SDL3/Android
 	// >=31 for SDL > 3.2.0
@@ -54,6 +54,8 @@ fn libsdl3_node(config SDL3Config) !&Node {
 
 	src := os.join_path(root, 'src')
 
+	// NOTE: for guidance there's a list of files in the `Android.mk` file located at the root of the SDL3 project.
+
 	mut collect_paths := [src]
 	collect_paths << [
 		// os.join_path(src, 'atomic'), // See below
@@ -76,6 +78,16 @@ fn libsdl3_node(config SDL3Config) !&Node {
 		os.join_path(src, 'gpu'),
 		os.join_path(src, 'gpu', 'vulkan'),
 		os.join_path(src, 'haptic'),
+		os.join_path(src, 'haptic', 'dummy'),
+	]
+
+	if sem_version.satisfies('>=3.4.0') {
+		collect_paths << [
+			os.join_path(src, 'haptic', 'hidapi'),
+		]
+	}
+
+	collect_paths << [
 		os.join_path(src, 'haptic', 'android'),
 		os.join_path(src, 'hidapi'),
 		os.join_path(src, 'hidapi', 'android'),
@@ -125,7 +137,13 @@ fn libsdl3_node(config SDL3Config) !&Node {
 		os.join_path(src, 'timer'),
 		os.join_path(src, 'timer', 'unix'),
 		os.join_path(src, 'tray'),
-		os.join_path(src, 'tray', 'unix'),
+	]
+	if sem_version.satisfies('<3.4.0') {
+		collect_paths << [
+			os.join_path(src, 'tray', 'unix'),
+		]
+	}
+	collect_paths << [
 		os.join_path(src, 'tray', 'dummy'),
 		os.join_path(src, 'video'),
 		os.join_path(src, 'video', 'android'),
@@ -184,7 +202,7 @@ fn libsdl3_node(config SDL3Config) !&Node {
 		'-Wunreachable-code-return', '-Wshift-sign-overflow', '-Wstrict-prototypes',
 		'-Wkeyword-macro']
 	// SDL/JNI specifics that aren't fixed yet
-	// flags << '-Wno-unused-parameter -Wno-sign-compare'.split(' ')
+	flags << '-Wno-unused-parameter -Wno-sign-compare'.split(' ')
 
 	for flag in flags {
 		o_build.add_flag(flag, ['c', 'cpp'])!
@@ -192,6 +210,9 @@ fn libsdl3_node(config SDL3Config) !&Node {
 	flags.clear()
 
 	flags << '-DGL_GLEXT_PROTOTYPES'
+	if sem_version.satisfies('>=3.4.0') {
+		flags << '-DSDL_HAPTIC_ANDROID'
+	}
 	for flag in flags {
 		o_build.add_flag(flag, ['c', 'cpp'])!
 	}
