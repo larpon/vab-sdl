@@ -25,7 +25,7 @@ jobs:
         repository: vlang/v
 
     - name: Build local v
-      run: make -j4 && sudo ./v symlink
+      run: make && sudo ./v symlink
 
     - name: Checkout vab-sdl
       uses: actions/checkout@v4
@@ -50,14 +50,14 @@ jobs:
         repository: vlang/v
 
     - name: Build local v
-      run: make -j4 && sudo ./v symlink
+      run: make && sudo ./v symlink
 
     - name: Install dependencies
       run: |
         v retry -- sudo apt-get update
         v retry -- sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev
         v retry -- sudo apt-get install --quiet -y libsdl2-mixer-dev libsdl2-image-dev
-       
+
     - name: Checkout SDL
       uses: actions/checkout@v4
       with:
@@ -89,10 +89,10 @@ jobs:
     - name: Run vab doctor *before*
       run: vab doctor
 
-      # Cure syptom: `error: 'ALooper_pollAll' is unavailable: obsoleted in Android 1 - ALooper_pollAll may ignore wakes.`...
+      # Cure symptom: `error: 'ALooper_pollAll' is unavailable: obsoleted in Android 1 - ALooper_pollAll may ignore wakes.`...
     - name: Install older NDK version to match Ubuntu SDL2 version (2.0.20)
       run: vab install "ndk;25.1.8937393"
-      
+
     - name: Install Android 33
       run: vab install "platforms;android-33"
 
