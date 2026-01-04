@@ -245,6 +245,6 @@ jobs:
       run: |
         vab sdl ~/.vmodules/sdl/examples/basic_window -o example_01.apk
         [ -f example_01.apk ]
-        vab sdl ~/.vmodules/sdl/examples/ports/renderer/05-rectangles -o example_02.apk
+        vab sdl --nocache ~/.vmodules/sdl/examples/ports/renderer/05-rectangles -o example_02.apk
         [ -f example_02.apk ]
 
